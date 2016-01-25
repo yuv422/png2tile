@@ -2,6 +2,7 @@
 
 #include <png.h>
 #include <vector>
+#include <fstream>
 
 using namespace std;
 
@@ -13,6 +14,9 @@ using namespace std;
 #define PNG_HEADER_CHECK_SIZE 8
 
 #define NUM_TILE_COLS_IN_PNG_IMAGE 16
+
+#define TMX_FLIP_X_FLAG 0x80000000
+#define TMX_FLIP_Y_FLAG 0x40000000
 
 typedef struct {
     png_byte bit_depth;
@@ -47,6 +51,7 @@ typedef struct Tile {
 typedef struct {
     const char *input_filename;
     const char *output_tile_image_filename;
+    const char *tmx_filename;
     bool mirror;
     bool remove_dups;
     PaletteOutputFormat paletteOutputFormat;
@@ -260,6 +265,11 @@ Config parse_commandline_opts(int argc, char **argv) {
                if (i<argc) {
                    config.output_tile_image_filename = argv[i];
                }
+           } else if (strcmp(cmd, "savetmx")==0) {
+               i++;
+               if (i<argc) {
+                   config.tmx_filename = argv[i];
+               }
            } else {
                show_usage();
            }
@@ -295,6 +305,62 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
     write_png_file(output_image_filename, output_width, output_height, input_image->bit_depth, pixels, input_image->palette, input_image->num_palette_entries);
 
     //write_png_file(output_image_filename, input_image->width, input_image->height, input_image->bit_depth, (char *)input_image->pixels, input_image->palette, input_image->num_palette_entries);
+}
+
+void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *tiles, vector<Tile*> *tilemap) {
+    string tileset_filename = filename;
+
+    tileset_filename += ".png";
+
+    write_tiles_to_png_image(tileset_filename.c_str(), input_image, tiles);
+
+    int tilemap_width = input_image->width/TILE_WIDTH;
+    int tilemap_height = input_image->height/TILE_HEIGHT;
+
+    ofstream out;
+    out.open(filename);
+
+    out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    out << "<map version=\"1.0\" orientation=\"orthogonal\" renderorder=\"right-down\" width=\"";
+    out << tilemap_width << "\" height=\"" << tilemap_height;
+    out << "\" tilewidth=\"" << TILE_WIDTH << "\" tileheight=\"" << TILE_HEIGHT << "\">\n";
+    out << " <tileset firstgid=\"1\" name=\"tileset\" tilewidth=\"" << TILE_WIDTH << "\" tileheight=\"" << TILE_WIDTH << "\">\n";
+    out << "  <image source=\"" << tileset_filename << "\" />\n";
+    out << " </tileset>\n";
+
+
+    out << " <layer name=\"Bottom\" width=\"" << tilemap_width << "\" height=\"" << tilemap_height << "\">\n";
+    out << "  <data encoding=\"csv\" >";
+
+    int total_tiles = tilemap->size();
+    for(int i=0;i<total_tiles;i++) {
+        Tile *t = tilemap->at(i);
+
+        unsigned int id = t->original_tile != NULL ? (unsigned int)t->original_tile->id : (unsigned int)t->id;
+        id++;
+        if(t->flipped_x) {
+            id = id | TMX_FLIP_X_FLAG;
+        }
+        if(t->flipped_y) {
+            id = id | TMX_FLIP_Y_FLAG;
+        }
+
+        out << id;
+
+        if(i<total_tiles-1) {
+            out << ",";
+        }
+
+        if(i%tilemap_width == tilemap_width-1) {
+            out << "\n";
+        }
+    }
+
+    out << "  </data>\n";
+    out << " </layer>\n";
+    out << "</map>\n";
+
+    out.close();
 }
 
 Tile *find_duplicate(Tile *tile, vector<Tile*> *tiles) {
@@ -454,6 +520,10 @@ void process_file(Config config) {
 
     if (config.output_tile_image_filename != NULL) {
         write_tiles_to_png_image(config.output_tile_image_filename, image, &tiles);
+    }
+
+    if (config.tmx_filename != NULL) {
+        write_tmx_file(config.tmx_filename, image, &tiles, &tilemap);
     }
 }
 
