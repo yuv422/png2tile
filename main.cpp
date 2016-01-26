@@ -18,6 +18,11 @@ using namespace std;
 #define TMX_FLIP_X_FLAG 0x80000000
 #define TMX_FLIP_Y_FLAG 0x40000000
 
+#define MAX_COLOURS 16
+
+#define uint8 unsigned char
+#define uint16 unsigned short
+
 typedef struct {
     png_byte bit_depth;
     int width, height;
@@ -52,6 +57,7 @@ typedef struct {
     const char *input_filename;
     const char *output_tile_image_filename;
     const char *tmx_filename;
+    const char *palette_filename;
     bool mirror;
     bool remove_dups;
     PaletteOutputFormat paletteOutputFormat;
@@ -222,6 +228,8 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.tile_start_offset = 0;
 
     config.output_tile_image_filename = NULL;
+    config.tmx_filename = NULL;
+    config.palette_filename = NULL;
 
     for(int i=2;i<argc;i++) {
         const char *option = argv[i];
@@ -253,13 +261,28 @@ Config parse_commandline_opts(int argc, char **argv) {
            } else if (strcmp(cmd, "infrontofsprites")==0) {
 
            } else if (strcmp(cmd, "pal")==0) {
-
+               i++;
+               if (i<argc) {
+                   if(strcmp(argv[i], "sms") == 0) {
+                       config.paletteOutputFormat = SMS;
+                   } else if(strcmp(argv[i], "sms_cl123") == 0) {
+                       config.paletteOutputFormat = SMS_CL123;
+                   } else if(strcmp(argv[i], "gg") == 0) {
+                       config.paletteOutputFormat = GG;
+                   } else {
+                       printf("Invalid palette type '%s'. Valid palette types are ('sms', 'sms_cl123', 'gg')\n", argv[i]);
+                       exit(1);
+                   }
+               }
            } else if (strcmp(cmd, "savetiles")==0) {
 
            } else if (strcmp(cmd, "savetilemap")==0) {
 
            } else if (strcmp(cmd, "savepalette")==0) {
-
+               i++;
+               if (i<argc) {
+                   config.palette_filename = argv[i];
+               }
            } else if (strcmp(cmd, "savetileimage")==0) {
                i++;
                if (i<argc) {
@@ -305,6 +328,69 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
     write_png_file(output_image_filename, output_width, output_height, input_image->bit_depth, pixels, input_image->palette, input_image->num_palette_entries);
 
     //write_png_file(output_image_filename, input_image->width, input_image->height, input_image->bit_depth, (char *)input_image->pixels, input_image->palette, input_image->num_palette_entries);
+}
+
+uint8 convert_colour_channel_to_2bit(uint8 c) {
+    if (c < 56) return 0;
+    if (c < 122) return 1;
+    if (c < 188) return 2;
+    return 3;
+}
+
+void write_sms_palette_file(const char *filename, Image *input_image) {
+    ofstream out;
+    out.open(filename);
+
+    out << ".db";
+
+    for(int i=0;i<MAX_COLOURS;i++) {
+        uint8 c = (convert_colour_channel_to_2bit((uint8)input_image->palette[i].red)
+                          | (convert_colour_channel_to_2bit((uint8)input_image->palette[i].green) << 2)
+                          | (convert_colour_channel_to_2bit((uint8)input_image->palette[i].blue) << 4));
+        char buf[3];
+        sprintf(buf, "%02X", c);
+        out << " $" << buf;
+    }
+    out << "\n";
+
+    out.close();
+}
+
+void write_gg_palette_file(const char *filename, Image *input_image) {
+    ofstream out;
+    out.open(filename);
+
+    out << ".dw";
+
+    for(int i=0;i<MAX_COLOURS;i++) {
+        uint16 c = ((uint16)input_image->palette[i].red >> 4)
+                          | (uint16)(input_image->palette[i].green >> 4) << 4
+                          | (uint16)(input_image->palette[i].blue >> 4) << 8;
+        char buf[4];
+        sprintf(buf, "%03X", c);
+        out << " $" << buf;
+    }
+    out << "\n";
+
+    out.close();
+}
+
+void write_sms_cl123_palette_file(const char *filename, Image *input_image) {
+    ofstream out;
+    out.open(filename);
+
+    out << ".db";
+
+    for(int i=0;i<MAX_COLOURS;i++) {
+        uint8 r = convert_colour_channel_to_2bit((uint8)input_image->palette[i].red);
+        uint8 g = convert_colour_channel_to_2bit((uint8)input_image->palette[i].green);
+        uint8 b = convert_colour_channel_to_2bit((uint8)input_image->palette[i].blue);
+
+        out << " cl" << (int)r << (int)g << (int)b;
+    }
+    out << "\n";
+
+    out.close();
 }
 
 void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *tiles, vector<Tile*> *tilemap) {
@@ -476,8 +562,8 @@ Tile *createTile(Image *image, int x, int y, int w, int h, vector<Tile*> *tiles,
     return tile;
 }
 
-void add_new_tile(int tile_start_offset, vector<Tile*> *tiles, Tile *tile) {
-    tile->id = tile_start_offset + tiles->size();
+void add_new_tile(vector<Tile*> *tiles, Tile *tile) {
+    tile->id = tiles->size();
     tiles->push_back(tile);
 }
 
@@ -510,7 +596,7 @@ void process_file(Config config) {
             Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
 
             if(!tile->is_duplicate || !config.remove_dups) {
-                add_new_tile(config.tile_start_offset, &tiles, tile);
+                add_new_tile(&tiles, tile);
             }
             tilemap.push_back(tile);
         }
@@ -524,6 +610,15 @@ void process_file(Config config) {
 
     if (config.tmx_filename != NULL) {
         write_tmx_file(config.tmx_filename, image, &tiles, &tilemap);
+    }
+
+    if (config.palette_filename != NULL) {
+        switch(config.paletteOutputFormat) {
+            case SMS : write_sms_palette_file(config.palette_filename, image); break;
+            case SMS_CL123 : write_sms_cl123_palette_file(config.palette_filename, image); break;
+            case GG : write_gg_palette_file(config.palette_filename, image); break;
+            default : break;
+        }
     }
 }
 
