@@ -23,6 +23,11 @@ using namespace std;
 #define uint8 unsigned char
 #define uint16 unsigned short
 
+#define TILEMAP_H_FLIP_FLAG 0x200
+#define TILEMAP_V_FLIP_FLAG 0x400
+#define TILEMAP_SPRITE_PALETTE_FLAG 0x800
+#define TILEMAP_INFRONT_FLAG 0x1000
+
 typedef struct {
     png_byte bit_depth;
     int width, height;
@@ -58,11 +63,15 @@ typedef struct {
     const char *output_tile_image_filename;
     const char *tmx_filename;
     const char *palette_filename;
+    const char *tilemap_filename;
+    const char *tiles_filename;
     bool mirror;
     bool remove_dups;
     PaletteOutputFormat paletteOutputFormat;
     TileSize tileSize;
     int tile_start_offset;
+    bool use_sprite_pal;
+    bool infront_flag;
 } Config;
 
 // PNG read/write logic based on code from Guillaume Cottenceau
@@ -225,11 +234,15 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.mirror = true;
     config.paletteOutputFormat = SMS;
     config.tileSize = TILE_8x8;
+    config.use_sprite_pal = false;
+    config.infront_flag = false;
     config.tile_start_offset = 0;
 
     config.output_tile_image_filename = NULL;
     config.tmx_filename = NULL;
     config.palette_filename = NULL;
+    config.tilemap_filename = NULL;
+    config.tiles_filename = NULL;
 
     for(int i=2;i<argc;i++) {
         const char *option = argv[i];
@@ -244,9 +257,9 @@ Config parse_commandline_opts(int argc, char **argv) {
            } else if (strcmp(cmd, "nomirror")==0) {
                config.mirror = false;
            } else if (strcmp(cmd, "8x8")==0) {
-
+               config.tileSize = TILE_8x8;
            } else if (strcmp(cmd, "8x16")==0) {
-
+               config.tileSize = TILE_8x16;
            } else if (strcmp(cmd, "planar")==0) {
 
            } else if (strcmp(cmd, "chunky")==0) {
@@ -257,9 +270,9 @@ Config parse_commandline_opts(int argc, char **argv) {
                    config.tile_start_offset = atoi(argv[i]); //FIXME handle hex in the format 0x123 or $123
                }
            } else if (strcmp(cmd, "spritepalette")==0) {
-
+               config.use_sprite_pal = true;
            } else if (strcmp(cmd, "infrontofsprites")==0) {
-
+               config.infront_flag = true;
            } else if (strcmp(cmd, "pal")==0) {
                i++;
                if (i<argc) {
@@ -275,9 +288,15 @@ Config parse_commandline_opts(int argc, char **argv) {
                    }
                }
            } else if (strcmp(cmd, "savetiles")==0) {
-
+               i++;
+               if (i<argc) {
+                   config.tiles_filename = argv[i];
+               }
            } else if (strcmp(cmd, "savetilemap")==0) {
-
+               i++;
+               if (i<argc) {
+                   config.tilemap_filename = argv[i];
+               }
            } else if (strcmp(cmd, "savepalette")==0) {
                i++;
                if (i<argc) {
@@ -330,6 +349,39 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
     //write_png_file(output_image_filename, input_image->width, input_image->height, input_image->bit_depth, (char *)input_image->pixels, input_image->palette, input_image->num_palette_entries);
 }
 
+
+void write_tiles(Config config, const char *filename, vector<Tile*> *tiles) {
+    int size = (int)tiles->size();
+
+    ofstream out;
+    out.open(filename);
+
+    for(int i=0;i<size;i++) {
+        char buf[32];
+        sprintf(buf,"%03X", i+config.tile_start_offset);
+        out << "; Tile index $" << std::uppercase << std::hex << buf << "\n";
+        Tile *tile = tiles->at(i);
+
+        out << ".db";
+
+        for(int y=0;y<TILE_HEIGHT;y++) {
+            for(int p=0;p<4;p++) {
+                uint8 byte = 0;
+                for(int x=0;x<TILE_WIDTH;x++) {
+                    uint8 pixel = tile->data[y * TILE_WIDTH + x];
+                    byte |= ((pixel >> p & 1) << (7 - x));
+                }
+                sprintf(buf,"%02X", byte);
+                out << " $" << buf;
+            }
+        }
+
+        out << "\n";
+    }
+
+    out.close();
+}
+
 uint8 convert_colour_channel_to_2bit(uint8 c) {
     if (c < 56) return 0;
     if (c < 122) return 1;
@@ -366,8 +418,8 @@ void write_gg_palette_file(const char *filename, Image *input_image) {
         uint16 c = ((uint16)input_image->palette[i].red >> 4)
                           | (uint16)(input_image->palette[i].green >> 4) << 4
                           | (uint16)(input_image->palette[i].blue >> 4) << 8;
-        char buf[4];
-        sprintf(buf, "%03X", c);
+        char buf[5];
+        sprintf(buf, "%04X", c);
         out << " $" << buf;
     }
     out << "\n";
@@ -447,6 +499,48 @@ void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *til
     out << "</map>\n";
 
     out.close();
+}
+
+void write_tilemap_file(Config config, const char *filename, vector<Tile*> *tilemap, int width) {
+    ofstream out;
+    out.open(filename);
+
+    out << ".dw";
+
+    int total_tiles = tilemap->size();
+    for(int i=0;i<total_tiles;i++) {
+        Tile *t = tilemap->at(i);
+
+        unsigned int id = t->original_tile != NULL ? (unsigned int)t->original_tile->id : (unsigned int)t->id;
+        id += config.tile_start_offset;
+
+        if(t->flipped_x) {
+            id = id | TILEMAP_H_FLIP_FLAG;
+        }
+        if(t->flipped_y) {
+            id = id | TILEMAP_V_FLIP_FLAG;
+        }
+
+        if(config.use_sprite_pal) {
+            id = id | TILEMAP_SPRITE_PALETTE_FLAG;
+        }
+
+        if(config.infront_flag) {
+            id = id | TILEMAP_INFRONT_FLAG;
+        }
+
+        char buf[5];
+        sprintf(buf, "%04X", id);
+
+        out << " $" << buf;
+
+        if(i%width == width-1) {
+            out << "\n";
+            if(i<total_tiles-1) {
+                out << ".dw";
+            }
+        }
+    }
 }
 
 Tile *find_duplicate(Tile *tile, vector<Tile*> *tiles) {
@@ -619,6 +713,14 @@ void process_file(Config config) {
             case GG : write_gg_palette_file(config.palette_filename, image); break;
             default : break;
         }
+    }
+
+    if (config.tilemap_filename != NULL) {
+        write_tilemap_file(config, config.tilemap_filename, &tilemap, image->width/TILE_WIDTH);
+    }
+
+    if (config.tiles_filename != NULL) {
+        write_tiles(config, config.tiles_filename, &tiles);
     }
 }
 
