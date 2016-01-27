@@ -49,6 +49,11 @@ typedef enum {
     TILE_8x16
 } TileSize;
 
+typedef enum {
+    TILE_FORMAT_PLANAR,
+    TILE_FORMAT_CHUNKY
+} TileOutputFormat;
+
 typedef struct Tile {
     int id;
     char *data;
@@ -69,6 +74,7 @@ typedef struct {
     bool remove_dups;
     PaletteOutputFormat paletteOutputFormat;
     TileSize tileSize;
+    TileOutputFormat tileOutputFormat;
     int tile_start_offset;
     bool use_sprite_pal;
     bool infront_flag;
@@ -234,6 +240,7 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.mirror = true;
     config.paletteOutputFormat = SMS;
     config.tileSize = TILE_8x8;
+    config.tileOutputFormat = TILE_FORMAT_PLANAR;
     config.use_sprite_pal = false;
     config.infront_flag = false;
     config.tile_start_offset = 0;
@@ -260,14 +267,22 @@ Config parse_commandline_opts(int argc, char **argv) {
                config.tileSize = TILE_8x8;
            } else if (strcmp(cmd, "8x16")==0) {
                config.tileSize = TILE_8x16;
-           } else if (strcmp(cmd, "planar")==0) {
-
-           } else if (strcmp(cmd, "chunky")==0) {
-
+           } else if (strcmp(cmd, "tileformat")==0) {
+               i++;
+               if (i<argc) {
+                   if(strcmp(argv[i], "planar") == 0) {
+                       config.tileOutputFormat = TILE_FORMAT_PLANAR;
+                   } else if(strcmp(argv[i], "chunky") == 0) {
+                       config.tileOutputFormat = TILE_FORMAT_CHUNKY;
+                   } else {
+                       printf("Invalid tile output format '%s'. Valid formats are ('planar', 'chunky')\n", argv[i]);
+                       exit(1);
+                   }
+               }
            } else if (strcmp(cmd, "tileoffset")==0) {
                i++;
                if (i<argc) {
-                   config.tile_start_offset = atoi(argv[i]); //FIXME handle hex in the format 0x123 or $123
+                   config.tile_start_offset = strtol(argv[i], NULL, 0);
                }
            } else if (strcmp(cmd, "spritepalette")==0) {
                config.use_sprite_pal = true;
@@ -359,19 +374,27 @@ void write_tiles(Config config, const char *filename, vector<Tile*> *tiles) {
     for(int i=0;i<size;i++) {
         char buf[32];
         sprintf(buf,"%03X", i+config.tile_start_offset);
-        out << "; Tile index $" << std::uppercase << std::hex << buf << "\n";
+        out << "; Tile index $" << buf << "\n";
         Tile *tile = tiles->at(i);
 
         out << ".db";
 
-        for(int y=0;y<TILE_HEIGHT;y++) {
-            for(int p=0;p<4;p++) {
-                uint8 byte = 0;
-                for(int x=0;x<TILE_WIDTH;x++) {
-                    uint8 pixel = tile->data[y * TILE_WIDTH + x];
-                    byte |= ((pixel >> p & 1) << (7 - x));
+        if(config.tileOutputFormat == TILE_FORMAT_PLANAR) {
+            for (int y = 0; y < TILE_HEIGHT; y++) {
+                for (int p = 0; p < 4; p++) {
+                    uint8 byte = 0;
+                    for (int x = 0; x < TILE_WIDTH; x++) {
+                        uint8 pixel = tile->data[y * TILE_WIDTH + x];
+                        byte |= ((pixel >> p & 1) << (7 - x));
+                    }
+                    sprintf(buf, "%02X", byte);
+                    out << " $" << buf;
                 }
-                sprintf(buf,"%02X", byte);
+            }
+        } else if(config.tileOutputFormat == TILE_FORMAT_CHUNKY) {
+            for (int j = 0; j < NUM_PIXELS_IN_TILE; j += 2) {
+                uint8 outbyte = (uint8) (tile->data[j + 1] & 0xF) | ((uint8) (tile->data[j] & 0xF) << 4);
+                sprintf(buf, "%02X", outbyte);
                 out << " $" << buf;
             }
         }
