@@ -263,10 +263,18 @@ Config parse_commandline_opts(int argc, char **argv) {
                config.mirror = true;
            } else if (strcmp(cmd, "nomirror")==0) {
                config.mirror = false;
-           } else if (strcmp(cmd, "8x8")==0) {
-               config.tileSize = TILE_8x8;
-           } else if (strcmp(cmd, "8x16")==0) {
-               config.tileSize = TILE_8x16;
+           } else if (strcmp(cmd, "tilesize")==0) {
+               i++;
+               if (i<argc) {
+                   if(strcmp(argv[i], "8x8") == 0) {
+                       config.tileSize = TILE_8x8;
+                   } else if(strcmp(argv[i], "8x16") == 0) {
+                       config.tileSize = TILE_8x16;
+                   } else {
+                       printf("Invalid tile size '%s'. Valid sizes are ('8x8', '8x16')\n", argv[i]);
+                       exit(1);
+                   }
+               }
            } else if (strcmp(cmd, "tileformat")==0) {
                i++;
                if (i<argc) {
@@ -332,6 +340,12 @@ Config parse_commandline_opts(int argc, char **argv) {
            }
         }
     }
+
+    if(config.tileSize == TILE_8x16 && config.remove_dups) {
+        printf("Warning: remove duplicates has been disabled because 8x16 tile size was selected.\n");
+        config.remove_dups = false;
+    }
+
     return config;
 }
 
@@ -468,7 +482,22 @@ void write_sms_cl123_palette_file(const char *filename, Image *input_image) {
     out.close();
 }
 
-void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *tiles, vector<Tile*> *tilemap) {
+unsigned int get_tmx_tile_id(vector<Tile*> *tilemap, int index) {
+    Tile *t = tilemap->at(index);
+
+    unsigned int id = t->original_tile != NULL ? (unsigned int) t->original_tile->id : (unsigned int) t->id;
+    id++;
+    if (t->flipped_x) {
+        id = id | TMX_FLIP_X_FLAG;
+    }
+    if (t->flipped_y) {
+        id = id | TMX_FLIP_Y_FLAG;
+    }
+
+    return id;
+}
+
+void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *tiles, vector<Tile*> *tilemap, TileSize tileSize) {
     string tileset_filename = filename;
 
     tileset_filename += ".png";
@@ -494,26 +523,37 @@ void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *til
     out << "  <data encoding=\"csv\" >";
 
     int total_tiles = tilemap->size();
-    for(int i=0;i<total_tiles;i++) {
-        Tile *t = tilemap->at(i);
 
-        unsigned int id = t->original_tile != NULL ? (unsigned int)t->original_tile->id : (unsigned int)t->id;
-        id++;
-        if(t->flipped_x) {
-            id = id | TMX_FLIP_X_FLAG;
+    if(tileSize == TILE_8x8) {
+        for (int i = 0; i < total_tiles; i++) {
+            unsigned int id = get_tmx_tile_id(tilemap, i);
+
+            out << id;
+
+            if (i < total_tiles - 1) {
+                out << ",";
+            }
+
+            if (i % tilemap_width == tilemap_width - 1) {
+                out << "\n";
+            }
         }
-        if(t->flipped_y) {
-            id = id | TMX_FLIP_Y_FLAG;
-        }
+    } else if (tileSize == TILE_8x16) {
+        for(int y=0;y<tilemap_height;y++) {
+            int i = (y/2) * tilemap_width*2 + (y%2);
+            for(int x=0;x<tilemap_width;x++,i+=2) {
+                unsigned int id = get_tmx_tile_id(tilemap, i);
 
-        out << id;
+                out << id;
 
-        if(i<total_tiles-1) {
-            out << ",";
-        }
+                if (i < total_tiles - 1) {
+                    out << ",";
+                }
 
-        if(i%tilemap_width == tilemap_width-1) {
-            out << "\n";
+                if (x % tilemap_width == tilemap_width - 1) {
+                    out << "\n";
+                }
+            }
         }
     }
 
@@ -691,34 +731,53 @@ void process_file(Config config) {
     }
 
     if(image->width % TILE_WIDTH != 0) {
-        printf("Input image width must be a multiple of %d.", TILE_WIDTH);
+        printf("Input image width must be a multiple of %d.\n", TILE_WIDTH);
         exit(1);
     }
 
     if(config.tileSize == TILE_8x8 && image->height % TILE_HEIGHT != 0) {
-        printf("Input image height must be a multiple of %d.", TILE_HEIGHT);
+        printf("Input image height must be a multiple of %d.\n", TILE_HEIGHT);
         exit(1);
     }
 
     if(config.tileSize == TILE_8x16 && image->height % 16 != 0) {
-        printf("Input image height must be a multiple of 16 when 8x16 tile mode is selected.");
+        printf("Input image height must be a multiple of 16 when 8x16 tile mode is selected.\n");
         exit(1);
     }
 
     vector<Tile*> tilemap;
     vector<Tile*> tiles;
 
-    for(int y=0; y < image->height; y+=TILE_HEIGHT) {
-        for(int x=0; x < image->width; x+=TILE_WIDTH) {
-            Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
+    if(config.tileSize == TILE_8x8) {
+        for (int y = 0; y < image->height; y += TILE_HEIGHT) {
+            for (int x = 0; x < image->width; x += TILE_WIDTH) {
+                Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
 
-            if(!tile->is_duplicate || !config.remove_dups) {
-                add_new_tile(&tiles, tile);
+                if (!tile->is_duplicate || !config.remove_dups) {
+                    add_new_tile(&tiles, tile);
+                }
+                tilemap.push_back(tile);
             }
-            tilemap.push_back(tile);
+        }
+    } else if (config.tileSize == TILE_8x16) {
+        for (int y = 0; y < image->height; y += TILE_HEIGHT*2) {
+            for (int x = 0; x < image->width; x += TILE_WIDTH) {
+                Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
+
+                if (!tile->is_duplicate || !config.remove_dups) {
+                    add_new_tile(&tiles, tile);
+                }
+                tilemap.push_back(tile);
+
+                tile = createTile(image, x, y + TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
+
+                if (!tile->is_duplicate || !config.remove_dups) {
+                    add_new_tile(&tiles, tile);
+                }
+                tilemap.push_back(tile);
+            }
         }
     }
-
     printf("tilemap: %d, tiles: %d\n", (int)tilemap.size(), (int)tiles.size());
 
     if (config.output_tile_image_filename != NULL) {
@@ -726,7 +785,7 @@ void process_file(Config config) {
     }
 
     if (config.tmx_filename != NULL) {
-        write_tmx_file(config.tmx_filename, image, &tiles, &tilemap);
+        write_tmx_file(config.tmx_filename, image, &tiles, &tilemap, config.tileSize);
     }
 
     if (config.palette_filename != NULL) {
