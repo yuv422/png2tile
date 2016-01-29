@@ -83,21 +83,21 @@ typedef struct {
 // PNG read/write logic based on code from Guillaume Cottenceau
 // http://zarb.org/~gc/html/libpng.html
 
-Image *read_png_file(const char * filename) {
+Image *read_png_file(const char *filename) {
     png_structp png_ptr;
     png_infop info_ptr;
 
     png_byte color_type;
     png_byte header[PNG_HEADER_CHECK_SIZE];
 
-    Image *image =  new Image;
+    Image *image = new Image;
 
     /* open file and test for it being a png */
     FILE *fp = fopen(filename, "rb");
     if (!fp)
         printf("[read_png_file] File %s could not be opened for reading", filename);
     fread(header, 1, PNG_HEADER_CHECK_SIZE, fp);
-    if (png_sig_cmp((png_bytep)header, 0, PNG_HEADER_CHECK_SIZE))
+    if (png_sig_cmp((png_bytep) header, 0, PNG_HEADER_CHECK_SIZE))
         printf("[read_png_file] File %s is not recognized as a PNG file", filename);
 
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
@@ -123,7 +123,7 @@ Image *read_png_file(const char * filename) {
     image->bit_depth = png_get_bit_depth(png_ptr, info_ptr);
 
 
-    if(color_type != PNG_COLOR_TYPE_PALETTE) {
+    if (color_type != PNG_COLOR_TYPE_PALETTE) {
         printf("[read_png_file] Only indexed PNG files allowed");
         fclose(fp);
         delete image;
@@ -132,7 +132,7 @@ Image *read_png_file(const char * filename) {
 
     png_get_PLTE(png_ptr, info_ptr, &image->palette, &image->num_palette_entries);
 
-    if(image->bit_depth > 4) {
+    if (image->bit_depth > 4) {
         printf("[read_png_file] PNG bit depth > 4. Only the first 16 colours will be used.\n");
     }
 
@@ -149,7 +149,7 @@ Image *read_png_file(const char * filename) {
     image->row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * image->height);
     image->stride = image->width;
     image->pixels = (png_bytep) malloc(image->stride * image->height);
-    for (int y=0; y<image->height; y++)
+    for (int y = 0; y < image->height; y++)
         image->row_pointers[y] = &image->pixels[y * image->stride];
 
 
@@ -160,14 +160,15 @@ Image *read_png_file(const char * filename) {
     return image;
 }
 
-void write_png_file(const char *filename, int width, int height, png_byte bit_depth, char *pixels, png_colorp palette, int num_colours) {
+void write_png_file(const char *filename, int width, int height, png_byte bit_depth, char *pixels, png_colorp palette,
+                    int num_colours) {
 
     png_structp png_ptr;
     png_infop info_ptr;
     png_bytepp row_pointers;
 
     row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * height);
-    for (int y=0; y<height; y++)
+    for (int y = 0; y < height; y++)
         row_pointers[y] = (png_byte *) &pixels[y * width];
 
     /* create file */
@@ -224,13 +225,62 @@ void write_png_file(const char *filename, int width, int height, png_byte bit_de
 }
 
 void show_usage() {
-    printf("Usage:\n\npng2tile <input file> [options]\n");
+    string s = "Usage:\n"
+            "png2tile <input_filename> [options]\n"
+            "\n"
+            "Option               Effect\n"
+            "\n"
+            "-[no]removedupes     Enable/disable the removal of duplicate tiles\n"
+            "                     *default (-removedupes)\n"
+            "\n"
+            "-[no]mirror          Enable/disable tile mirroring to further optimise\n"
+            "                     duplicates *default (-mirror)\n"
+            "\n"
+            "-tilesize <size>     '8x8'      Treat tile data as 8x8 *default*\n"
+            "                     '8x16'     Treat tile data as 8x16\n"
+            "\n"
+            "-tileformat <format> 'planar'   Output tileset data in Planar format. *default* \n"
+            "                     'chunky'   Output tileset data in chunky\n"
+            "                                (two pixels per byte) format. \n"
+            "\n"
+            "-tileoffset <n>      The starting index of the first tile. *Default is 0.\n"
+            "                     The offset can be specified in either decimal or hex\n"
+            "                     Hex numbers prefixed with 0x eg. 0x1A\n"
+            "\n"
+            "-spritepalette       Set the tilemap bit to make tiles use the sprite palette.\n"
+            "                     *Default is unset.\n"
+            "\n"
+            "-infrontofsprites    Set the tilemap bit to make tiles appear in front of\n"
+            "                     sprites. *Default is unset.\n"
+            "\n"
+            "-pal <format>        Palette output format\n"
+            "                     sms        Output the palette in SMS colour format\n"
+            "                     gg         Output the palette in GG colour format\n"
+            "                     sms_cl123  Output the palette in SMS colour format\n"
+            "                                eg cl123, cl333, cl001\n"
+            "\n"
+            "-savetiles <filename>\n"
+            "                     Save tile data to <filename>.\n"
+            "\n"
+            "-savetilemap <filename>\n"
+            "                     Save tilemap data to <filename>. \n"
+            "\n"
+            "-savepalette <filename>\n"
+            "                     Save palette data to <filename>.\n"
+            "\n"
+            "-savetileimage <filename>\n"
+            "                     Save tileset data as a PNG image.\n"
+            "\n"
+            "-savetmx <filename> \n"
+            "                     Save tilemap and corresponding tileset in the Tiled\n"
+            "                     mapeditor TMX format.";
+    cout << s;
 }
 
 Config parse_commandline_opts(int argc, char **argv) {
     Config config;
 
-    if (argc<2 || argv[1][0] == '-') {
+    if (argc < 2 || argv[1][0] == '-') {
         show_usage();
         exit(1);
     }
@@ -251,97 +301,99 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.tilemap_filename = NULL;
     config.tiles_filename = NULL;
 
-    for(int i=2;i<argc;i++) {
+    for (int i = 2; i < argc; i++) {
         const char *option = argv[i];
-        if(option[0] == '-') {
-           const char *cmd = &option[1];
-           if(strcmp(cmd, "removedupes")==0) {
-               config.remove_dups = true;
-           } else if (strcmp(cmd, "noremovedupes")==0) {
-               config.remove_dups = false;
-           } else if (strcmp(cmd, "mirror")==0) {
-               config.mirror = true;
-           } else if (strcmp(cmd, "nomirror")==0) {
-               config.mirror = false;
-           } else if (strcmp(cmd, "tilesize")==0) {
-               i++;
-               if (i<argc) {
-                   if(strcmp(argv[i], "8x8") == 0) {
-                       config.tileSize = TILE_8x8;
-                   } else if(strcmp(argv[i], "8x16") == 0) {
-                       config.tileSize = TILE_8x16;
-                   } else {
-                       printf("Invalid tile size '%s'. Valid sizes are ('8x8', '8x16')\n", argv[i]);
-                       exit(1);
-                   }
-               }
-           } else if (strcmp(cmd, "tileformat")==0) {
-               i++;
-               if (i<argc) {
-                   if(strcmp(argv[i], "planar") == 0) {
-                       config.tileOutputFormat = TILE_FORMAT_PLANAR;
-                   } else if(strcmp(argv[i], "chunky") == 0) {
-                       config.tileOutputFormat = TILE_FORMAT_CHUNKY;
-                   } else {
-                       printf("Invalid tile output format '%s'. Valid formats are ('planar', 'chunky')\n", argv[i]);
-                       exit(1);
-                   }
-               }
-           } else if (strcmp(cmd, "tileoffset")==0) {
-               i++;
-               if (i<argc) {
-                   config.tile_start_offset = strtol(argv[i], NULL, 0);
-               }
-           } else if (strcmp(cmd, "spritepalette")==0) {
-               config.use_sprite_pal = true;
-           } else if (strcmp(cmd, "infrontofsprites")==0) {
-               config.infront_flag = true;
-           } else if (strcmp(cmd, "pal")==0) {
-               i++;
-               if (i<argc) {
-                   if(strcmp(argv[i], "sms") == 0) {
-                       config.paletteOutputFormat = SMS;
-                   } else if(strcmp(argv[i], "sms_cl123") == 0) {
-                       config.paletteOutputFormat = SMS_CL123;
-                   } else if(strcmp(argv[i], "gg") == 0) {
-                       config.paletteOutputFormat = GG;
-                   } else {
-                       printf("Invalid palette type '%s'. Valid palette types are ('sms', 'sms_cl123', 'gg')\n", argv[i]);
-                       exit(1);
-                   }
-               }
-           } else if (strcmp(cmd, "savetiles")==0) {
-               i++;
-               if (i<argc) {
-                   config.tiles_filename = argv[i];
-               }
-           } else if (strcmp(cmd, "savetilemap")==0) {
-               i++;
-               if (i<argc) {
-                   config.tilemap_filename = argv[i];
-               }
-           } else if (strcmp(cmd, "savepalette")==0) {
-               i++;
-               if (i<argc) {
-                   config.palette_filename = argv[i];
-               }
-           } else if (strcmp(cmd, "savetileimage")==0) {
-               i++;
-               if (i<argc) {
-                   config.output_tile_image_filename = argv[i];
-               }
-           } else if (strcmp(cmd, "savetmx")==0) {
-               i++;
-               if (i<argc) {
-                   config.tmx_filename = argv[i];
-               }
-           } else {
-               show_usage();
-           }
+        if (option[0] == '-') {
+            const char *cmd = &option[1];
+            if (strcmp(cmd, "removedupes") == 0) {
+                config.remove_dups = true;
+            } else if (strcmp(cmd, "noremovedupes") == 0) {
+                config.remove_dups = false;
+            } else if (strcmp(cmd, "mirror") == 0) {
+                config.mirror = true;
+            } else if (strcmp(cmd, "nomirror") == 0) {
+                config.mirror = false;
+            } else if (strcmp(cmd, "tilesize") == 0) {
+                i++;
+                if (i < argc) {
+                    if (strcmp(argv[i], "8x8") == 0) {
+                        config.tileSize = TILE_8x8;
+                    } else if (strcmp(argv[i], "8x16") == 0) {
+                        config.tileSize = TILE_8x16;
+                    } else {
+                        printf("Invalid tile size '%s'. Valid sizes are ('8x8', '8x16')\n", argv[i]);
+                        exit(1);
+                    }
+                }
+            } else if (strcmp(cmd, "tileformat") == 0) {
+                i++;
+                if (i < argc) {
+                    if (strcmp(argv[i], "planar") == 0) {
+                        config.tileOutputFormat = TILE_FORMAT_PLANAR;
+                    } else if (strcmp(argv[i], "chunky") == 0) {
+                        config.tileOutputFormat = TILE_FORMAT_CHUNKY;
+                    } else {
+                        printf("Invalid tile output format '%s'. Valid formats are ('planar', 'chunky')\n", argv[i]);
+                        exit(1);
+                    }
+                }
+            } else if (strcmp(cmd, "tileoffset") == 0) {
+                i++;
+                if (i < argc) {
+                    config.tile_start_offset = strtol(argv[i], NULL, 0);
+                }
+            } else if (strcmp(cmd, "spritepalette") == 0) {
+                config.use_sprite_pal = true;
+            } else if (strcmp(cmd, "infrontofsprites") == 0) {
+                config.infront_flag = true;
+            } else if (strcmp(cmd, "pal") == 0) {
+                i++;
+                if (i < argc) {
+                    if (strcmp(argv[i], "sms") == 0) {
+                        config.paletteOutputFormat = SMS;
+                    } else if (strcmp(argv[i], "sms_cl123") == 0) {
+                        config.paletteOutputFormat = SMS_CL123;
+                    } else if (strcmp(argv[i], "gg") == 0) {
+                        config.paletteOutputFormat = GG;
+                    } else {
+                        printf("Invalid palette type '%s'. Valid palette types are ('sms', 'sms_cl123', 'gg')\n",
+                               argv[i]);
+                        exit(1);
+                    }
+                }
+            } else if (strcmp(cmd, "savetiles") == 0) {
+                i++;
+                if (i < argc) {
+                    config.tiles_filename = argv[i];
+                }
+            } else if (strcmp(cmd, "savetilemap") == 0) {
+                i++;
+                if (i < argc) {
+                    config.tilemap_filename = argv[i];
+                }
+            } else if (strcmp(cmd, "savepalette") == 0) {
+                i++;
+                if (i < argc) {
+                    config.palette_filename = argv[i];
+                }
+            } else if (strcmp(cmd, "savetileimage") == 0) {
+                i++;
+                if (i < argc) {
+                    config.output_tile_image_filename = argv[i];
+                }
+            } else if (strcmp(cmd, "savetmx") == 0) {
+                i++;
+                if (i < argc) {
+                    config.tmx_filename = argv[i];
+                }
+            } else {
+                printf("Unknown option: '-%s'\n", cmd);
+                show_usage();
+            }
         }
     }
 
-    if(config.tileSize == TILE_8x16 && config.remove_dups) {
+    if (config.tileSize == TILE_8x16 && config.remove_dups) {
         printf("Warning: remove duplicates has been disabled because 8x16 tile size was selected.\n");
         config.remove_dups = false;
     }
@@ -349,7 +401,7 @@ Config parse_commandline_opts(int argc, char **argv) {
     return config;
 }
 
-void write_tiles_to_png_image(const char *output_image_filename, Image *input_image, vector<Tile*> *tiles) {
+void write_tiles_to_png_image(const char *output_image_filename, Image *input_image, vector<Tile *> *tiles) {
     int output_width = 16;
     int output_height = tiles->size() / output_width;
     if (tiles->size() % output_width != 0) {
@@ -359,41 +411,42 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
     output_width *= TILE_WIDTH;
     output_height *= TILE_HEIGHT;
 
-    char *pixels = (char *)malloc(output_width * output_height);
-    memset(pixels,0, output_width * output_height);
-    int size = (int)tiles->size();
+    char *pixels = (char *) malloc(output_width * output_height);
+    memset(pixels, 0, output_width * output_height);
+    int size = (int) tiles->size();
 
-    for(int i=0;i<size;i++) {
-        char *ptr = &pixels[(i/NUM_TILE_COLS_IN_PNG_IMAGE) * output_width * TILE_HEIGHT + (i%NUM_TILE_COLS_IN_PNG_IMAGE) * TILE_WIDTH];
+    for (int i = 0; i < size; i++) {
+        char *ptr = &pixels[(i / NUM_TILE_COLS_IN_PNG_IMAGE) * output_width * TILE_HEIGHT +
+                            (i % NUM_TILE_COLS_IN_PNG_IMAGE) * TILE_WIDTH];
         Tile *tile = tiles->at(i);
         char *tile_data_ptr = tile->data;
-        for(int j=0;j<TILE_WIDTH;j++) {
+        for (int j = 0; j < TILE_WIDTH; j++) {
             memcpy(ptr, tile_data_ptr, TILE_WIDTH);
             tile_data_ptr += TILE_WIDTH;
             ptr += output_width;
         }
     }
-    write_png_file(output_image_filename, output_width, output_height, input_image->bit_depth, pixels, input_image->palette, input_image->num_palette_entries);
 
-    //write_png_file(output_image_filename, input_image->width, input_image->height, input_image->bit_depth, (char *)input_image->pixels, input_image->palette, input_image->num_palette_entries);
+    write_png_file(output_image_filename, output_width, output_height, input_image->bit_depth, pixels,
+                   input_image->palette, input_image->num_palette_entries);
 }
 
 
-void write_tiles(Config config, const char *filename, vector<Tile*> *tiles) {
-    int size = (int)tiles->size();
+void write_tiles(Config config, const char *filename, vector<Tile *> *tiles) {
+    int size = (int) tiles->size();
 
     ofstream out;
     out.open(filename);
 
-    for(int i=0;i<size;i++) {
+    for (int i = 0; i < size; i++) {
         char buf[32];
-        sprintf(buf,"%03X", i+config.tile_start_offset);
+        sprintf(buf, "%03X", i + config.tile_start_offset);
         out << "; Tile index $" << buf << "\n";
         Tile *tile = tiles->at(i);
 
         out << ".db";
 
-        if(config.tileOutputFormat == TILE_FORMAT_PLANAR) {
+        if (config.tileOutputFormat == TILE_FORMAT_PLANAR) {
             for (int y = 0; y < TILE_HEIGHT; y++) {
                 for (int p = 0; p < 4; p++) {
                     uint8 byte = 0;
@@ -405,7 +458,7 @@ void write_tiles(Config config, const char *filename, vector<Tile*> *tiles) {
                     out << " $" << buf;
                 }
             }
-        } else if(config.tileOutputFormat == TILE_FORMAT_CHUNKY) {
+        } else if (config.tileOutputFormat == TILE_FORMAT_CHUNKY) {
             for (int j = 0; j < NUM_PIXELS_IN_TILE; j += 2) {
                 uint8 outbyte = (uint8) (tile->data[j + 1] & 0xF) | ((uint8) (tile->data[j] & 0xF) << 4);
                 sprintf(buf, "%02X", outbyte);
@@ -432,10 +485,10 @@ void write_sms_palette_file(const char *filename, Image *input_image) {
 
     out << ".db";
 
-    for(int i=0;i<MAX_COLOURS;i++) {
-        uint8 c = (convert_colour_channel_to_2bit((uint8)input_image->palette[i].red)
-                          | (convert_colour_channel_to_2bit((uint8)input_image->palette[i].green) << 2)
-                          | (convert_colour_channel_to_2bit((uint8)input_image->palette[i].blue) << 4));
+    for (int i = 0; i < MAX_COLOURS; i++) {
+        uint8 c = (convert_colour_channel_to_2bit((uint8) input_image->palette[i].red)
+                   | (convert_colour_channel_to_2bit((uint8) input_image->palette[i].green) << 2)
+                   | (convert_colour_channel_to_2bit((uint8) input_image->palette[i].blue) << 4));
         char buf[3];
         sprintf(buf, "%02X", c);
         out << " $" << buf;
@@ -451,10 +504,10 @@ void write_gg_palette_file(const char *filename, Image *input_image) {
 
     out << ".dw";
 
-    for(int i=0;i<MAX_COLOURS;i++) {
-        uint16 c = ((uint16)input_image->palette[i].red >> 4)
-                          | (uint16)(input_image->palette[i].green >> 4) << 4
-                          | (uint16)(input_image->palette[i].blue >> 4) << 8;
+    for (int i = 0; i < MAX_COLOURS; i++) {
+        uint16 c = ((uint16) input_image->palette[i].red >> 4)
+                   | (uint16) (input_image->palette[i].green >> 4) << 4
+                   | (uint16) (input_image->palette[i].blue >> 4) << 8;
         char buf[5];
         sprintf(buf, "%04X", c);
         out << " $" << buf;
@@ -470,19 +523,19 @@ void write_sms_cl123_palette_file(const char *filename, Image *input_image) {
 
     out << ".db";
 
-    for(int i=0;i<MAX_COLOURS;i++) {
-        uint8 r = convert_colour_channel_to_2bit((uint8)input_image->palette[i].red);
-        uint8 g = convert_colour_channel_to_2bit((uint8)input_image->palette[i].green);
-        uint8 b = convert_colour_channel_to_2bit((uint8)input_image->palette[i].blue);
+    for (int i = 0; i < MAX_COLOURS; i++) {
+        uint8 r = convert_colour_channel_to_2bit((uint8) input_image->palette[i].red);
+        uint8 g = convert_colour_channel_to_2bit((uint8) input_image->palette[i].green);
+        uint8 b = convert_colour_channel_to_2bit((uint8) input_image->palette[i].blue);
 
-        out << " cl" << (int)r << (int)g << (int)b;
+        out << " cl" << (int) r << (int) g << (int) b;
     }
     out << "\n";
 
     out.close();
 }
 
-unsigned int get_tmx_tile_id(vector<Tile*> *tilemap, int index) {
+unsigned int get_tmx_tile_id(vector<Tile *> *tilemap, int index) {
     Tile *t = tilemap->at(index);
 
     unsigned int id = t->original_tile != NULL ? (unsigned int) t->original_tile->id : (unsigned int) t->id;
@@ -497,15 +550,16 @@ unsigned int get_tmx_tile_id(vector<Tile*> *tilemap, int index) {
     return id;
 }
 
-void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *tiles, vector<Tile*> *tilemap, TileSize tileSize) {
+void write_tmx_file(const char *filename, Image *input_image, vector<Tile *> *tiles, vector<Tile *> *tilemap,
+                    TileSize tileSize) {
     string tileset_filename = filename;
 
     tileset_filename += ".png";
 
     write_tiles_to_png_image(tileset_filename.c_str(), input_image, tiles);
 
-    int tilemap_width = input_image->width/TILE_WIDTH;
-    int tilemap_height = input_image->height/TILE_HEIGHT;
+    int tilemap_width = input_image->width / TILE_WIDTH;
+    int tilemap_height = input_image->height / TILE_HEIGHT;
 
     ofstream out;
     out.open(filename);
@@ -514,7 +568,8 @@ void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *til
     out << "<map version=\"1.0\" orientation=\"orthogonal\" renderorder=\"right-down\" width=\"";
     out << tilemap_width << "\" height=\"" << tilemap_height;
     out << "\" tilewidth=\"" << TILE_WIDTH << "\" tileheight=\"" << TILE_HEIGHT << "\">\n";
-    out << " <tileset firstgid=\"1\" name=\"tileset\" tilewidth=\"" << TILE_WIDTH << "\" tileheight=\"" << TILE_WIDTH << "\">\n";
+    out << " <tileset firstgid=\"1\" name=\"tileset\" tilewidth=\"" << TILE_WIDTH << "\" tileheight=\"" << TILE_WIDTH <<
+    "\">\n";
     out << "  <image source=\"" << tileset_filename << "\" />\n";
     out << " </tileset>\n";
 
@@ -524,7 +579,7 @@ void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *til
 
     int total_tiles = tilemap->size();
 
-    if(tileSize == TILE_8x8) {
+    if (tileSize == TILE_8x8) {
         for (int i = 0; i < total_tiles; i++) {
             unsigned int id = get_tmx_tile_id(tilemap, i);
 
@@ -539,9 +594,9 @@ void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *til
             }
         }
     } else if (tileSize == TILE_8x16) {
-        for(int y=0;y<tilemap_height;y++) {
-            int i = (y/2) * tilemap_width*2 + (y%2);
-            for(int x=0;x<tilemap_width;x++,i+=2) {
+        for (int y = 0; y < tilemap_height; y++) {
+            int i = (y / 2) * tilemap_width * 2 + (y % 2);
+            for (int x = 0; x < tilemap_width; x++, i += 2) {
                 unsigned int id = get_tmx_tile_id(tilemap, i);
 
                 out << id;
@@ -564,31 +619,31 @@ void write_tmx_file(const char *filename, Image *input_image, vector<Tile*> *til
     out.close();
 }
 
-void write_tilemap_file(Config config, const char *filename, vector<Tile*> *tilemap, int width) {
+void write_tilemap_file(Config config, const char *filename, vector<Tile *> *tilemap, int width) {
     ofstream out;
     out.open(filename);
 
     out << ".dw";
 
     int total_tiles = tilemap->size();
-    for(int i=0;i<total_tiles;i++) {
+    for (int i = 0; i < total_tiles; i++) {
         Tile *t = tilemap->at(i);
 
-        unsigned int id = t->original_tile != NULL ? (unsigned int)t->original_tile->id : (unsigned int)t->id;
+        unsigned int id = t->original_tile != NULL ? (unsigned int) t->original_tile->id : (unsigned int) t->id;
         id += config.tile_start_offset;
 
-        if(t->flipped_x) {
+        if (t->flipped_x) {
             id = id | TILEMAP_H_FLIP_FLAG;
         }
-        if(t->flipped_y) {
+        if (t->flipped_y) {
             id = id | TILEMAP_V_FLIP_FLAG;
         }
 
-        if(config.use_sprite_pal) {
+        if (config.use_sprite_pal) {
             id = id | TILEMAP_SPRITE_PALETTE_FLAG;
         }
 
-        if(config.infront_flag) {
+        if (config.infront_flag) {
             id = id | TILEMAP_INFRONT_FLAG;
         }
 
@@ -597,27 +652,27 @@ void write_tilemap_file(Config config, const char *filename, vector<Tile*> *tile
 
         out << " $" << buf;
 
-        if(i%width == width-1) {
+        if (i % width == width - 1) {
             out << "\n";
-            if(i<total_tiles-1) {
+            if (i < total_tiles - 1) {
                 out << ".dw";
             }
         }
     }
 }
 
-Tile *find_duplicate(Tile *tile, vector<Tile*> *tiles) {
-    int size = (int)tiles->size();
+Tile *find_duplicate(Tile *tile, vector<Tile *> *tiles) {
+    int size = (int) tiles->size();
 
-    for(int i=0;i<size;i++) {
+    for (int i = 0; i < size; i++) {
         Tile *t = tiles->at(i);
-        int count=0;
-        for(;count<NUM_PIXELS_IN_TILE;count++) {
-            if(t->data[count] != tile->data[count]) {
+        int count = 0;
+        for (; count < NUM_PIXELS_IN_TILE; count++) {
+            if (t->data[count] != tile->data[count]) {
                 break;
             }
         }
-        if(count == NUM_PIXELS_IN_TILE) {
+        if (count == NUM_PIXELS_IN_TILE) {
             return t;
         }
     }
@@ -636,7 +691,7 @@ Tile *new_tile(int id, bool flipped_x, bool flipped_y, bool is_duplicate, Tile *
     tile->is_duplicate = is_duplicate;
     tile->original_tile = original_tile;
 
-    tile->data = (char *)malloc(NUM_PIXELS_IN_TILE);
+    tile->data = (char *) malloc(NUM_PIXELS_IN_TILE);
 
     return tile;
 }
@@ -644,9 +699,9 @@ Tile *new_tile(int id, bool flipped_x, bool flipped_y, bool is_duplicate, Tile *
 Tile *tile_flip_x(Tile *tile) {
     Tile *flipped_tile = new_tile(tile->id, true, tile->flipped_y, tile->is_duplicate, tile->original_tile);
 
-    for(int y=0;y<TILE_HEIGHT;y++) {
-        for(int x=0;x<TILE_WIDTH;x++) {
-            flipped_tile->data[y*TILE_WIDTH+x] = tile->data[y*TILE_WIDTH+((TILE_WIDTH-1)-x)];
+    for (int y = 0; y < TILE_HEIGHT; y++) {
+        for (int x = 0; x < TILE_WIDTH; x++) {
+            flipped_tile->data[y * TILE_WIDTH + x] = tile->data[y * TILE_WIDTH + ((TILE_WIDTH - 1) - x)];
         }
     }
 
@@ -656,9 +711,9 @@ Tile *tile_flip_x(Tile *tile) {
 Tile *tile_flip_y(Tile *tile) {
     Tile *flipped_tile = new_tile(tile->id, tile->flipped_x, true, tile->is_duplicate, tile->original_tile);
 
-    for(int x=0;x<TILE_WIDTH;x++) {
-        for(int y=0;y<TILE_HEIGHT;y++) {
-            flipped_tile->data[y*TILE_WIDTH+x] = tile->data[(TILE_HEIGHT-1-y)*TILE_WIDTH+x];
+    for (int x = 0; x < TILE_WIDTH; x++) {
+        for (int y = 0; y < TILE_HEIGHT; y++) {
+            flipped_tile->data[y * TILE_WIDTH + x] = tile->data[(TILE_HEIGHT - 1 - y) * TILE_WIDTH + x];
         }
     }
 
@@ -673,41 +728,41 @@ Tile *tile_flip_xy(Tile *tile) {
     return flipped_xy;
 }
 
-Tile *createTile(Image *image, int x, int y, int w, int h, vector<Tile*> *tiles, bool mirrored) {
+Tile *createTile(Image *image, int x, int y, int w, int h, vector<Tile *> *tiles, bool mirrored) {
     Tile *tile = new_tile(0, false, false, false, NULL);
 
     png_bytep ptr = image->pixels + y * image->stride + x;
     char *tile_ptr = tile->data;
-    for(int i=0;i<h;i++) {
+    for (int i = 0; i < h; i++) {
         memcpy(tile_ptr, ptr, w);
         tile_ptr += w;
         ptr += image->stride;
     }
 
     tile->original_tile = find_duplicate(tile, tiles);
-    if(tile->original_tile) {
+    if (tile->original_tile) {
         tile->is_duplicate = true;
     }
 
-    if(mirrored && !tile->is_duplicate) {
+    if (mirrored && !tile->is_duplicate) {
         Tile *flipped = tile_flip_x(tile);
         tile->original_tile = find_duplicate(flipped, tiles);
         delete flipped;
-        if(tile->original_tile) {
+        if (tile->original_tile) {
             tile->flipped_x = true;
             tile->is_duplicate = true;
         } else {
             flipped = tile_flip_y(tile);
             tile->original_tile = find_duplicate(flipped, tiles);
             delete flipped;
-            if(tile->original_tile) {
+            if (tile->original_tile) {
                 tile->flipped_y = true;
                 tile->is_duplicate = true;
             } else {
                 flipped = tile_flip_xy(tile);
                 tile->original_tile = find_duplicate(flipped, tiles);
                 delete flipped;
-                if(tile->original_tile) {
+                if (tile->original_tile) {
                     tile->flipped_x = true;
                     tile->flipped_y = true;
                     tile->is_duplicate = true;
@@ -719,36 +774,36 @@ Tile *createTile(Image *image, int x, int y, int w, int h, vector<Tile*> *tiles,
     return tile;
 }
 
-void add_new_tile(vector<Tile*> *tiles, Tile *tile) {
+void add_new_tile(vector<Tile *> *tiles, Tile *tile) {
     tile->id = tiles->size();
     tiles->push_back(tile);
 }
 
 void process_file(Config config) {
     Image *image = read_png_file(config.input_filename);
-    if(image == NULL) {
+    if (image == NULL) {
         return;
     }
 
-    if(image->width % TILE_WIDTH != 0) {
+    if (image->width % TILE_WIDTH != 0) {
         printf("Input image width must be a multiple of %d.\n", TILE_WIDTH);
         exit(1);
     }
 
-    if(config.tileSize == TILE_8x8 && image->height % TILE_HEIGHT != 0) {
+    if (config.tileSize == TILE_8x8 && image->height % TILE_HEIGHT != 0) {
         printf("Input image height must be a multiple of %d.\n", TILE_HEIGHT);
         exit(1);
     }
 
-    if(config.tileSize == TILE_8x16 && image->height % 16 != 0) {
+    if (config.tileSize == TILE_8x16 && image->height % 16 != 0) {
         printf("Input image height must be a multiple of 16 when 8x16 tile mode is selected.\n");
         exit(1);
     }
 
-    vector<Tile*> tilemap;
-    vector<Tile*> tiles;
+    vector<Tile *> tilemap;
+    vector<Tile *> tiles;
 
-    if(config.tileSize == TILE_8x8) {
+    if (config.tileSize == TILE_8x8) {
         for (int y = 0; y < image->height; y += TILE_HEIGHT) {
             for (int x = 0; x < image->width; x += TILE_WIDTH) {
                 Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
@@ -760,7 +815,7 @@ void process_file(Config config) {
             }
         }
     } else if (config.tileSize == TILE_8x16) {
-        for (int y = 0; y < image->height; y += TILE_HEIGHT*2) {
+        for (int y = 0; y < image->height; y += TILE_HEIGHT * 2) {
             for (int x = 0; x < image->width; x += TILE_WIDTH) {
                 Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
 
@@ -778,7 +833,7 @@ void process_file(Config config) {
             }
         }
     }
-    printf("tilemap: %d, tiles: %d\n", (int)tilemap.size(), (int)tiles.size());
+    printf("tilemap: %d, tiles: %d\n", (int) tilemap.size(), (int) tiles.size());
 
     if (config.output_tile_image_filename != NULL) {
         write_tiles_to_png_image(config.output_tile_image_filename, image, &tiles);
@@ -789,16 +844,23 @@ void process_file(Config config) {
     }
 
     if (config.palette_filename != NULL) {
-        switch(config.paletteOutputFormat) {
-            case SMS : write_sms_palette_file(config.palette_filename, image); break;
-            case SMS_CL123 : write_sms_cl123_palette_file(config.palette_filename, image); break;
-            case GG : write_gg_palette_file(config.palette_filename, image); break;
-            default : break;
+        switch (config.paletteOutputFormat) {
+            case SMS :
+                write_sms_palette_file(config.palette_filename, image);
+                break;
+            case SMS_CL123 :
+                write_sms_cl123_palette_file(config.palette_filename, image);
+                break;
+            case GG :
+                write_gg_palette_file(config.palette_filename, image);
+                break;
+            default :
+                break;
         }
     }
 
     if (config.tilemap_filename != NULL) {
-        write_tilemap_file(config, config.tilemap_filename, &tilemap, image->width/TILE_WIDTH);
+        write_tilemap_file(config, config.tilemap_filename, &tilemap, image->width / TILE_WIDTH);
     }
 
     if (config.tiles_filename != NULL) {
