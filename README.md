@@ -3,7 +3,7 @@ Convert PNG images into Sega Master System tile format.
 
 It is written in C++ and requires the libpng library. It should be fairly portable.
 
-This project is heavily imspired by Maxim's BMP2Tile application https://github.com/maxim-zhao/bmp2tile
+This project is heavily inspired by Maxim's BMP2Tile application https://github.com/maxim-zhao/bmp2tile
 
 ## Usage
 
