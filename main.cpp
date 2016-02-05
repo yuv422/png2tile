@@ -273,7 +273,7 @@ void show_usage() {
             "\n"
             "-savetmx <filename> \n"
             "                     Save tilemap and corresponding tileset in the Tiled\n"
-            "                     mapeditor TMX format.";
+            "                     mapeditor TMX format.\n\n";
     cout << s;
 }
 
