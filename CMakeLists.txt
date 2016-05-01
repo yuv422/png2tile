@@ -10,4 +10,4 @@ add_executable(png2tile ${SOURCE_FILES})
 
 
 include_directories(${PNG_INCLUDE_DIR})
-target_link_libraries(png2tile ${PNG_LIBRARY})
+target_link_libraries(png2tile ${PNG_LIBRARY} -lz)

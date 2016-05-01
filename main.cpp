@@ -94,23 +94,34 @@ Image *read_png_file(const char *filename) {
 
     /* open file and test for it being a png */
     FILE *fp = fopen(filename, "rb");
-    if (!fp)
+    if (!fp) {
         printf("[read_png_file] File %s could not be opened for reading", filename);
+        exit(1);
+    }
+
     fread(header, 1, PNG_HEADER_CHECK_SIZE, fp);
-    if (png_sig_cmp((png_bytep) header, 0, PNG_HEADER_CHECK_SIZE))
+    if (png_sig_cmp((png_bytep) header, 0, PNG_HEADER_CHECK_SIZE)) {
         printf("[read_png_file] File %s is not recognized as a PNG file", filename);
+        exit(1);
+    }
 
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 
-    if (!png_ptr)
+    if (!png_ptr) {
         printf("[read_png_file] png_create_read_struct failed");
+        exit(1);
+    }
 
     info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr)
+    if (!info_ptr) {
         printf("[read_png_file] png_create_info_struct failed");
+        exit(1);
+    }
 
-    if (setjmp(png_jmpbuf(png_ptr)))
+    if (setjmp(png_jmpbuf(png_ptr))) {
         printf("[read_png_file] Error during init_io");
+        exit(1);
+    }
 
     png_init_io(png_ptr, fp);
     png_set_sig_bytes(png_ptr, PNG_HEADER_CHECK_SIZE);
@@ -137,14 +148,15 @@ Image *read_png_file(const char *filename) {
     }
 
     png_set_interlace_handling(png_ptr);
+    png_set_packing(png_ptr);
     png_read_update_info(png_ptr, info_ptr);
 
 
     /* read file */
-    if (setjmp(png_jmpbuf(png_ptr)))
+    if (setjmp(png_jmpbuf(png_ptr))) {
         printf("[read_png_file] Error during read_image");
-
-    png_set_packing(png_ptr);
+        exit(1);
+    }
 
     image->row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * image->height);
     image->stride = image->width;
