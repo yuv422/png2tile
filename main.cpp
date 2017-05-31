@@ -1,3 +1,4 @@
+#include <string>
 #include <iostream>
 
 #include <png.h>
@@ -39,6 +40,7 @@ typedef struct {
 } Image;
 
 typedef enum {
+    GEN,
     SMS,
     SMS_CL123,
     GG
@@ -266,6 +268,7 @@ void show_usage() {
             "                     sprites. *Default is unset.\n"
             "\n"
             "-pal <format>        Palette output format\n"
+            "                     gen        Output the palette in GEN/MD colour format\n"
             "                     sms        Output the palette in SMS colour format\n"
             "                     gg         Output the palette in GG colour format\n"
             "                     sms_cl123  Output the palette in SMS colour format\n"
@@ -361,14 +364,16 @@ Config parse_commandline_opts(int argc, char **argv) {
             } else if (strcmp(cmd, "pal") == 0) {
                 i++;
                 if (i < argc) {
-                    if (strcmp(argv[i], "sms") == 0) {
+                    if (strcmp(argv[i], "gen") == 0) {
+                        config.paletteOutputFormat = GEN;
+                    } else if (strcmp(argv[i], "sms") == 0) {
                         config.paletteOutputFormat = SMS;
                     } else if (strcmp(argv[i], "sms_cl123") == 0) {
                         config.paletteOutputFormat = SMS_CL123;
                     } else if (strcmp(argv[i], "gg") == 0) {
                         config.paletteOutputFormat = GG;
                     } else {
-                        printf("Invalid palette type '%s'. Valid palette types are ('sms', 'sms_cl123', 'gg')\n",
+                        printf("Invalid palette type '%s'. Valid palette types are ('gen', 'sms', 'sms_cl123', 'gg')\n",
                                argv[i]);
                         exit(1);
                     }
@@ -520,6 +525,25 @@ void write_gg_palette_file(const char *filename, Image *input_image) {
         uint16 c = ((uint16) input_image->palette[i].red >> 4)
                    | (uint16) (input_image->palette[i].green >> 4) << 4
                    | (uint16) (input_image->palette[i].blue >> 4) << 8;
+        char buf[5];
+        sprintf(buf, "%04X", c);
+        out << " $" << buf;
+    }
+    out << "\n";
+
+    out.close();
+}
+
+void write_gen_palette_file(const char *filename, Image *input_image) {
+    ofstream out;
+    out.open(filename);
+
+    out << ".dw";
+
+    for (int i = 0; i < MAX_COLOURS; i++) {
+        uint16 c = (uint16)(((input_image->palette[i].red >> 4) & 0xE) << 0)
+            | (uint16)(((input_image->palette[i].green >> 4) & 0xE) << 4)
+            | (uint16)(((input_image->palette[i].blue >> 4) & 0xE) << 8);
         char buf[5];
         sprintf(buf, "%04X", c);
         out << " $" << buf;
@@ -857,6 +881,9 @@ void process_file(Config config) {
 
     if (config.palette_filename != NULL) {
         switch (config.paletteOutputFormat) {
+            case GEN :
+                write_gen_palette_file(config.palette_filename, image);
+                break;
             case SMS :
                 write_sms_palette_file(config.palette_filename, image);
                 break;
