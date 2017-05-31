@@ -36,6 +36,7 @@ This project is heavily inspired by Maxim's BMP2Tile application https://github.
                          sprites. *Default is unset.
     
     -pal <format>        Palette output format
+	                     gen        Output the palette in GEN/MD colour format
                          sms        Output the palette in SMS colour format
                          gg         Output the palette in GG colour format
                          sms_cl123  Output the palette in SMS colour format
