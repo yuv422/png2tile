@@ -5,7 +5,6 @@
 #include <vector>
 #include <fstream>
 
-using namespace std;
 
 #define NUM_PIXELS_IN_TILE 64
 
@@ -239,7 +238,7 @@ void write_png_file(const char *filename, int width, int height, png_byte bit_de
 }
 
 void show_usage() {
-    string s = "Usage:\n"
+    std::string s = "Usage:\n"
             "png2tile <input_filename> [options]\n"
             "\n"
             "Option               Effect\n"
@@ -289,7 +288,7 @@ void show_usage() {
             "-savetmx <filename> \n"
             "                     Save tilemap and corresponding tileset in the Tiled\n"
             "                     mapeditor TMX format.\n\n";
-    cout << s;
+    std::cout << s;
 }
 
 Config parse_commandline_opts(int argc, char **argv) {
@@ -418,7 +417,7 @@ Config parse_commandline_opts(int argc, char **argv) {
     return config;
 }
 
-void write_tiles_to_png_image(const char *output_image_filename, Image *input_image, vector<Tile *> *tiles) {
+void write_tiles_to_png_image(const char *output_image_filename, Image *input_image, std::vector<Tile *> *tiles) {
     int output_width = 16;
     int output_height = tiles->size() / output_width;
     if (tiles->size() % output_width != 0) {
@@ -449,10 +448,10 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
 }
 
 
-void write_tiles(Config config, const char *filename, vector<Tile *> *tiles) {
+void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles) {
     int size = (int) tiles->size();
 
-    ofstream out;
+    std::ofstream out;
     out.open(filename);
 
     for (int i = 0; i < size; i++) {
@@ -497,7 +496,7 @@ uint8 convert_colour_channel_to_2bit(uint8 c) {
 }
 
 void write_sms_palette_file(const char *filename, Image *input_image) {
-    ofstream out;
+    std::ofstream out;
     out.open(filename);
 
     out << ".db";
@@ -516,7 +515,7 @@ void write_sms_palette_file(const char *filename, Image *input_image) {
 }
 
 void write_gg_palette_file(const char *filename, Image *input_image) {
-    ofstream out;
+    std::ofstream out;
     out.open(filename);
 
     out << ".dw";
@@ -535,7 +534,7 @@ void write_gg_palette_file(const char *filename, Image *input_image) {
 }
 
 void write_gen_palette_file(const char *filename, Image *input_image) {
-    ofstream out;
+    std::ofstream out;
     out.open(filename);
 
     out << ".dw";
@@ -554,7 +553,7 @@ void write_gen_palette_file(const char *filename, Image *input_image) {
 }
 
 void write_sms_cl123_palette_file(const char *filename, Image *input_image) {
-    ofstream out;
+    std::ofstream out;
     out.open(filename);
 
     out << ".db";
@@ -571,7 +570,7 @@ void write_sms_cl123_palette_file(const char *filename, Image *input_image) {
     out.close();
 }
 
-unsigned int get_tmx_tile_id(vector<Tile *> *tilemap, int index) {
+unsigned int get_tmx_tile_id(std::vector<Tile *> *tilemap, int index) {
     Tile *t = tilemap->at(index);
 
     unsigned int id = t->original_tile != NULL ? (unsigned int) t->original_tile->id : (unsigned int) t->id;
@@ -586,9 +585,9 @@ unsigned int get_tmx_tile_id(vector<Tile *> *tilemap, int index) {
     return id;
 }
 
-void write_tmx_file(const char *filename, Image *input_image, vector<Tile *> *tiles, vector<Tile *> *tilemap,
+void write_tmx_file(const char *filename, Image *input_image, std::vector<Tile *> *tiles, std::vector<Tile *> *tilemap,
                     TileSize tileSize) {
-    string tileset_filename = filename;
+    std::string tileset_filename = filename;
 
     tileset_filename += ".png";
 
@@ -597,7 +596,7 @@ void write_tmx_file(const char *filename, Image *input_image, vector<Tile *> *ti
     int tilemap_width = input_image->width / TILE_WIDTH;
     int tilemap_height = input_image->height / TILE_HEIGHT;
 
-    ofstream out;
+    std::ofstream out;
     out.open(filename);
 
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
@@ -655,8 +654,8 @@ void write_tmx_file(const char *filename, Image *input_image, vector<Tile *> *ti
     out.close();
 }
 
-void write_tilemap_file(Config config, const char *filename, vector<Tile *> *tilemap, int width) {
-    ofstream out;
+void write_tilemap_file(Config config, const char *filename, std::vector<Tile *> *tilemap, int width) {
+    std::ofstream out;
     out.open(filename);
 
     out << ".dw";
@@ -697,7 +696,7 @@ void write_tilemap_file(Config config, const char *filename, vector<Tile *> *til
     }
 }
 
-Tile *find_duplicate(Tile *tile, vector<Tile *> *tiles) {
+Tile *find_duplicate(Tile *tile, std::vector<Tile *> *tiles) {
     int size = (int) tiles->size();
 
     for (int i = 0; i < size; i++) {
@@ -764,7 +763,7 @@ Tile *tile_flip_xy(Tile *tile) {
     return flipped_xy;
 }
 
-Tile *createTile(Image *image, int x, int y, int w, int h, vector<Tile *> *tiles, bool mirrored) {
+Tile *createTile(Image *image, int x, int y, int w, int h, std::vector<Tile *> *tiles, bool mirrored) {
     Tile *tile = new_tile(0, false, false, false, NULL);
 
     png_bytep ptr = image->pixels + y * image->stride + x;
@@ -810,7 +809,7 @@ Tile *createTile(Image *image, int x, int y, int w, int h, vector<Tile *> *tiles
     return tile;
 }
 
-void add_new_tile(vector<Tile *> *tiles, Tile *tile) {
+void add_new_tile(std::vector<Tile *> *tiles, Tile *tile) {
     tile->id = tiles->size();
     tiles->push_back(tile);
 }
@@ -836,8 +835,8 @@ void process_file(Config config) {
         exit(1);
     }
 
-    vector<Tile *> tilemap;
-    vector<Tile *> tiles;
+    std::vector<Tile *> tilemap;
+    std::vector<Tile *> tiles;
 
     if (config.tileSize == TILE_8x8) {
         for (int y = 0; y < image->height; y += TILE_HEIGHT) {
