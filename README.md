@@ -54,11 +54,15 @@ This project is heavily inspired by Maxim's BMP2Tile application https://github.
     -savetileimage <filename>
                          Save tileset data as a PNG image.
     
-    -savetmx <filename> 
+    -savetmx <filename>
                          Save tilemap and corresponding tileset in the Tiled
                          mapeditor TMX format.
     
     -binary
                          Output binary files instead of asm source files.
                          Ignored for sms_cl123 palette format, TMX, and PNG output.
+
+    -compress
+                         Compress output binary files. Uses STM compression for tilemaps
+                         and PSG compression for tiles. Implies -binary if not also specified.
 
