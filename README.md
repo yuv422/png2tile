@@ -57,4 +57,8 @@ This project is heavily inspired by Maxim's BMP2Tile application https://github.
     -savetmx <filename> 
                          Save tilemap and corresponding tileset in the Tiled
                          mapeditor TMX format.
+    
+    -binary
+                         Output binary files instead of asm source files.
+                         Ignored for sms_cl123 palette format, TMX, and PNG output.
 

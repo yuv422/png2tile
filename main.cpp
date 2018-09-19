@@ -6,7 +6,6 @@
 #include <vector>
 #include <fstream>
 
-
 #define NUM_PIXELS_IN_TILE 64
 
 #define TILE_HEIGHT 8
@@ -21,12 +20,9 @@
 
 #define MAX_COLOURS 16
 
-#define uint8 unsigned char
-#define uint16 unsigned short
-
-#define TILEMAP_H_FLIP_FLAG 0x200
-#define TILEMAP_V_FLIP_FLAG 0x400
-#define TILEMAP_SPRITE_PALETTE_FLAG 0x800
+#define TILEMAP_H_FLIP_FLAG 0x0200
+#define TILEMAP_V_FLIP_FLAG 0x0400
+#define TILEMAP_SPRITE_PALETTE_FLAG 0x0800
 #define TILEMAP_INFRONT_FLAG 0x1000
 
 typedef struct {
@@ -57,7 +53,7 @@ typedef enum {
 } TileOutputFormat;
 
 typedef struct Tile {
-    int id;
+    uint16_t id;
     char *data;
     bool flipped_x;
     bool flipped_y;
@@ -81,6 +77,9 @@ typedef struct {
     bool use_sprite_pal;
     bool infront_flag;
 } Config;
+
+// global config for binary output option
+static bool cfg_output_bin = false;
 
 // PNG read/write logic based on code from Guillaume Cottenceau
 // http://zarb.org/~gc/html/libpng.html
@@ -288,7 +287,11 @@ void show_usage() {
             "\n"
             "-savetmx <filename> \n"
             "                     Save tilemap and corresponding tileset in the Tiled\n"
-            "                     mapeditor TMX format.\n\n";
+            "                     mapeditor TMX format.\n"
+            "\n"
+            "-binary \n"
+            "                     Output binary files instead of asm source files.\n"
+            "                     Ignored for sms_cl123 palette format, TMX, and PNG output.\n\n";
     std::cout << s;
 }
 
@@ -403,6 +406,9 @@ Config parse_commandline_opts(int argc, char **argv) {
                 if (i < argc) {
                     config.tmx_filename = argv[i];
                 }
+            } else if (strcmp(cmd, "binary") == 0) {
+                i++;
+                cfg_output_bin = true;
             } else {
                 printf("Unknown option: '-%s'\n", cmd);
                 show_usage();
@@ -448,48 +454,59 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
                    input_image->palette, input_image->num_palette_entries);
 }
 
-
 void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles) {
     int size = (int) tiles->size();
 
     std::ofstream out;
-    out.open(filename);
+    out.open(filename, cfg_output_bin ?
+        std::ofstream::binary : std::ofstream::out);
+    // the binary output buffer
+    std::vector<uint8_t> outbuf;
 
     for (int i = 0; i < size; i++) {
-        char buf[32];
-        sprintf(buf, "%03X", i + config.tile_start_offset);
-        out << "; Tile index $" << buf << "\n";
         Tile *tile = tiles->at(i);
-
-        out << ".db";
+        char buf[32];
+        if (!cfg_output_bin) {
+            sprintf(buf, "%03X", i + config.tile_start_offset);
+            out << "; Tile index $" << buf << "\n";
+            out << ".db";
+        }
 
         if (config.tileOutputFormat == TILE_FORMAT_PLANAR) {
             for (int y = 0; y < TILE_HEIGHT; y++) {
                 for (int p = 0; p < 4; p++) {
-                    uint8 byte = 0;
+                    uint8_t byte = 0;
                     for (int x = 0; x < TILE_WIDTH; x++) {
-                        uint8 pixel = tile->data[y * TILE_WIDTH + x];
+                        uint8_t pixel = tile->data[y * TILE_WIDTH + x];
                         byte |= ((pixel >> p & 1) << (7 - x));
                     }
-                    sprintf(buf, "%02X", byte);
-                    out << " $" << buf;
+                    if (!cfg_output_bin) {
+                        sprintf(buf, "%02X", byte);
+                        out << " $" << buf;
+                    }
+                    outbuf.push_back(byte);
                 }
             }
         } else if (config.tileOutputFormat == TILE_FORMAT_CHUNKY) {
             for (int j = 0; j < NUM_PIXELS_IN_TILE; j += 2) {
-                uint8 outbyte = (uint8) (tile->data[j + 1] & 0xF) | ((uint8) (tile->data[j] & 0xF) << 4);
-                sprintf(buf, "%02X", outbyte);
-                out << " $" << buf;
+                uint8_t outbyte = (uint8_t) (tile->data[j + 1] & 0xF) | ((uint8_t) (tile->data[j] & 0xF) << 4);
+                if (!cfg_output_bin) {
+                    sprintf(buf, "%02X", outbyte);
+                    out << " $" << buf;
+                }
+                outbuf.push_back(outbyte);
             }
         }
-
-        out << "\n";
+        if (!cfg_output_bin) out << "\n";
     }
+
+    // write binary outbuf to file
+    if (cfg_output_bin) out.write((const char*)outbuf.data(), outbuf.size());
 
     out.close();
 }
 
-uint8 convert_colour_channel_to_2bit(uint8 c) {
+uint8_t convert_colour_channel_to_2bit(uint8_t c) {
     if (c < 56) return 0;
     if (c < 122) return 1;
     if (c < 188) return 2;
@@ -498,57 +515,66 @@ uint8 convert_colour_channel_to_2bit(uint8 c) {
 
 void write_sms_palette_file(const char *filename, Image *input_image) {
     std::ofstream out;
-    out.open(filename);
+    out.open(filename, cfg_output_bin ?
+        std::ofstream::binary : std::ofstream::out);
 
-    out << ".db";
+    if (!cfg_output_bin) out << ".db";
 
     for (int i = 0; i < MAX_COLOURS; i++) {
-        uint8 c = (convert_colour_channel_to_2bit((uint8) input_image->palette[i].red)
-                   | (convert_colour_channel_to_2bit((uint8) input_image->palette[i].green) << 2)
-                   | (convert_colour_channel_to_2bit((uint8) input_image->palette[i].blue) << 4));
+        uint8_t c = (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].red)
+                   | (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].green) << 2)
+                   | (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].blue) << 4));
         char buf[3];
-        sprintf(buf, "%02X", c);
-        out << " $" << buf;
+        if (!cfg_output_bin) {
+            sprintf(buf, "%02X", c);
+            out << " $" << buf;
+        } else out.write((const char*)&c, 1);
     }
-    out << "\n";
+    if (!cfg_output_bin) out << "\n";
 
     out.close();
 }
 
 void write_gg_palette_file(const char *filename, Image *input_image) {
     std::ofstream out;
-    out.open(filename);
+    out.open(filename, cfg_output_bin ?
+        std::ofstream::binary : std::ofstream::out);
 
-    out << ".dw";
+    if (!cfg_output_bin) out << ".dw";
 
     for (int i = 0; i < MAX_COLOURS; i++) {
-        uint16 c = ((uint16) input_image->palette[i].red >> 4)
-                   | (uint16) (input_image->palette[i].green >> 4) << 4
-                   | (uint16) (input_image->palette[i].blue >> 4) << 8;
+        uint16_t c = ((uint16_t) input_image->palette[i].red >> 4)
+                   | (uint16_t) (input_image->palette[i].green >> 4) << 4
+                   | (uint16_t) (input_image->palette[i].blue >> 4) << 8;
         char buf[5];
-        sprintf(buf, "%04X", c);
-        out << " $" << buf;
+        if (!cfg_output_bin) {
+            sprintf(buf, "%04X", c);
+            out << " $" << buf;
+        } else out.write((const char*)&c, 2);
     }
-    out << "\n";
+    if (!cfg_output_bin) out << "\n";
 
     out.close();
 }
 
 void write_gen_palette_file(const char *filename, Image *input_image) {
     std::ofstream out;
-    out.open(filename);
+    out.open(filename, cfg_output_bin ?
+        std::ofstream::binary : std::ofstream::out);
 
-    out << ".dw";
+    if (!cfg_output_bin) out << ".dw";
 
     for (int i = 0; i < MAX_COLOURS; i++) {
-        uint16 c = (uint16)(((input_image->palette[i].red >> 4) & 0xE) << 0)
-            | (uint16)(((input_image->palette[i].green >> 4) & 0xE) << 4)
-            | (uint16)(((input_image->palette[i].blue >> 4) & 0xE) << 8);
+        uint16_t c = (uint16_t)(((input_image->palette[i].red >> 4) & 0xE) << 0)
+            | (uint16_t)(((input_image->palette[i].green >> 4) & 0xE) << 4)
+            | (uint16_t)(((input_image->palette[i].blue >> 4) & 0xE) << 8);
         char buf[5];
-        sprintf(buf, "%04X", c);
-        out << " $" << buf;
+        if (!cfg_output_bin) {
+            sprintf(buf, "%04X", c);
+            out << " $" << buf;
+        } else out.write((const char*)&c, 2);
     }
-    out << "\n";
+    if (!cfg_output_bin) out << "\n";
 
     out.close();
 }
@@ -560,9 +586,9 @@ void write_sms_cl123_palette_file(const char *filename, Image *input_image) {
     out << ".db";
 
     for (int i = 0; i < MAX_COLOURS; i++) {
-        uint8 r = convert_colour_channel_to_2bit((uint8) input_image->palette[i].red);
-        uint8 g = convert_colour_channel_to_2bit((uint8) input_image->palette[i].green);
-        uint8 b = convert_colour_channel_to_2bit((uint8) input_image->palette[i].blue);
+        uint8_t r = convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].red);
+        uint8_t g = convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].green);
+        uint8_t b = convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].blue);
 
         out << " cl" << (int) r << (int) g << (int) b;
     }
@@ -657,15 +683,18 @@ void write_tmx_file(const char *filename, Image *input_image, std::vector<Tile *
 
 void write_tilemap_file(Config config, const char *filename, std::vector<Tile *> *tilemap, int width) {
     std::ofstream out;
-    out.open(filename);
+    out.open(filename, cfg_output_bin ?
+        std::ofstream::binary : std::ofstream::out);
+    std::vector<uint16_t> outbuf;
 
-    out << ".dw";
+    if (!cfg_output_bin) out << ".dw";
+    int height = 1;
 
     int total_tiles = tilemap->size();
     for (int i = 0; i < total_tiles; i++) {
         Tile *t = tilemap->at(i);
 
-        unsigned int id = t->original_tile != NULL ? (unsigned int) t->original_tile->id : (unsigned int) t->id;
+        uint16_t id = t->original_tile != NULL ? (uint16_t) t->original_tile->id : (uint16_t) t->id;
         id += config.tile_start_offset;
 
         if (t->flipped_x) {
@@ -684,17 +713,26 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
         }
 
         char buf[5];
-        sprintf(buf, "%04X", id);
+        if (!cfg_output_bin) {
+            sprintf(buf, "%04X", id);
+            out << " $" << buf;
+        }
 
-        out << " $" << buf;
+        outbuf.push_back(id);
 
         if (i % width == width - 1) {
-            out << "\n";
+            if (!cfg_output_bin) out << "\n";
             if (i < total_tiles - 1) {
-                out << ".dw";
+                if (!cfg_output_bin) out << ".dw";
+                height++;
             }
         }
     }
+
+    // write binary outbuf to file
+    if (cfg_output_bin) out.write((const char*)outbuf.data(), outbuf.size() * 2);
+
+    out.close();
 }
 
 Tile *find_duplicate(Tile *tile, std::vector<Tile *> *tiles) {
@@ -907,10 +945,10 @@ void process_file(Config config) {
     }
 }
 
-
 int main(int argc, char **argv) {
     Config cfg = parse_commandline_opts(argc, argv);
     process_file(cfg);
 
     return 0;
 }
+
