@@ -407,7 +407,6 @@ Config parse_commandline_opts(int argc, char **argv) {
                     config.tmx_filename = argv[i];
                 }
             } else if (strcmp(cmd, "binary") == 0) {
-                i++;
                 cfg_output_bin = true;
             } else {
                 printf("Unknown option: '-%s'\n", cmd);
