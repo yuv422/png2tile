@@ -76,10 +76,8 @@ typedef struct {
     int tile_start_offset;
     bool use_sprite_pal;
     bool infront_flag;
+    bool output_bin;
 } Config;
-
-// global config for binary output option
-static bool cfg_output_bin = false;
 
 // PNG read/write logic based on code from Guillaume Cottenceau
 // http://zarb.org/~gc/html/libpng.html
@@ -312,6 +310,7 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.use_sprite_pal = false;
     config.infront_flag = false;
     config.tile_start_offset = 0;
+    config.output_bin = false;
 
     config.output_tile_image_filename = NULL;
     config.tmx_filename = NULL;
@@ -407,7 +406,7 @@ Config parse_commandline_opts(int argc, char **argv) {
                     config.tmx_filename = argv[i];
                 }
             } else if (strcmp(cmd, "binary") == 0) {
-                cfg_output_bin = true;
+                config.output_bin = true;
             } else {
                 printf("Unknown option: '-%s'\n", cmd);
                 show_usage();
@@ -457,7 +456,7 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
     int size = (int) tiles->size();
 
     std::ofstream out;
-    out.open(filename, cfg_output_bin ?
+    out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
     // the binary output buffer
     std::vector<uint8_t> outbuf;
@@ -465,7 +464,7 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
     for (int i = 0; i < size; i++) {
         Tile *tile = tiles->at(i);
         char buf[32];
-        if (!cfg_output_bin) {
+        if (!config.output_bin) {
             sprintf(buf, "%03X", i + config.tile_start_offset);
             out << "; Tile index $" << buf << "\n";
             out << ".db";
@@ -479,7 +478,7 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
                         uint8_t pixel = tile->data[y * TILE_WIDTH + x];
                         byte |= ((pixel >> p & 1) << (7 - x));
                     }
-                    if (!cfg_output_bin) {
+                    if (!config.output_bin) {
                         sprintf(buf, "%02X", byte);
                         out << " $" << buf;
                     }
@@ -489,18 +488,18 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
         } else if (config.tileOutputFormat == TILE_FORMAT_CHUNKY) {
             for (int j = 0; j < NUM_PIXELS_IN_TILE; j += 2) {
                 uint8_t outbyte = (uint8_t) (tile->data[j + 1] & 0xF) | ((uint8_t) (tile->data[j] & 0xF) << 4);
-                if (!cfg_output_bin) {
+                if (!config.output_bin) {
                     sprintf(buf, "%02X", outbyte);
                     out << " $" << buf;
                 }
                 outbuf.push_back(outbyte);
             }
         }
-        if (!cfg_output_bin) out << "\n";
+        if (!config.output_bin) out << "\n";
     }
 
     // write binary outbuf to file
-    if (cfg_output_bin) out.write((const char*)outbuf.data(), outbuf.size());
+    if (config.output_bin) out.write((const char*)outbuf.data(), outbuf.size());
 
     out.close();
 }
@@ -512,68 +511,68 @@ uint8_t convert_colour_channel_to_2bit(uint8_t c) {
     return 3;
 }
 
-void write_sms_palette_file(const char *filename, Image *input_image) {
+void write_sms_palette_file(Config config, const char *filename, Image *input_image) {
     std::ofstream out;
-    out.open(filename, cfg_output_bin ?
+    out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
 
-    if (!cfg_output_bin) out << ".db";
+    if (!config.output_bin) out << ".db";
 
     for (int i = 0; i < MAX_COLOURS; i++) {
         uint8_t c = (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].red)
                    | (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].green) << 2)
                    | (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].blue) << 4));
-        char buf[3];
-        if (!cfg_output_bin) {
+        if (!config.output_bin) {
+            char buf[3];
             sprintf(buf, "%02X", c);
             out << " $" << buf;
         } else out.write((const char*)&c, 1);
     }
-    if (!cfg_output_bin) out << "\n";
+    if (!config.output_bin) out << "\n";
 
     out.close();
 }
 
-void write_gg_palette_file(const char *filename, Image *input_image) {
+void write_gg_palette_file(Config config, const char *filename, Image *input_image) {
     std::ofstream out;
-    out.open(filename, cfg_output_bin ?
+    out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
 
-    if (!cfg_output_bin) out << ".dw";
+    if (!config.output_bin) out << ".dw";
 
     for (int i = 0; i < MAX_COLOURS; i++) {
         uint16_t c = ((uint16_t) input_image->palette[i].red >> 4)
                    | (uint16_t) (input_image->palette[i].green >> 4) << 4
                    | (uint16_t) (input_image->palette[i].blue >> 4) << 8;
-        char buf[5];
-        if (!cfg_output_bin) {
+        if (!config.output_bin) {
+            char buf[5];
             sprintf(buf, "%04X", c);
             out << " $" << buf;
         } else out.write((const char*)&c, 2);
     }
-    if (!cfg_output_bin) out << "\n";
+    if (!config.output_bin) out << "\n";
 
     out.close();
 }
 
-void write_gen_palette_file(const char *filename, Image *input_image) {
+void write_gen_palette_file(Config config, const char *filename, Image *input_image) {
     std::ofstream out;
-    out.open(filename, cfg_output_bin ?
+    out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
 
-    if (!cfg_output_bin) out << ".dw";
+    if (!config.output_bin) out << ".dw";
 
     for (int i = 0; i < MAX_COLOURS; i++) {
         uint16_t c = (uint16_t)(((input_image->palette[i].red >> 4) & 0xE) << 0)
             | (uint16_t)(((input_image->palette[i].green >> 4) & 0xE) << 4)
             | (uint16_t)(((input_image->palette[i].blue >> 4) & 0xE) << 8);
-        char buf[5];
-        if (!cfg_output_bin) {
+        if (!config.output_bin) {
+            char buf[5];
             sprintf(buf, "%04X", c);
             out << " $" << buf;
         } else out.write((const char*)&c, 2);
     }
-    if (!cfg_output_bin) out << "\n";
+    if (!config.output_bin) out << "\n";
 
     out.close();
 }
@@ -682,11 +681,11 @@ void write_tmx_file(const char *filename, Image *input_image, std::vector<Tile *
 
 void write_tilemap_file(Config config, const char *filename, std::vector<Tile *> *tilemap, int width) {
     std::ofstream out;
-    out.open(filename, cfg_output_bin ?
+    out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
     std::vector<uint16_t> outbuf;
 
-    if (!cfg_output_bin) out << ".dw";
+    if (!config.output_bin) out << ".dw";
     int height = 1;
 
     int total_tiles = tilemap->size();
@@ -711,8 +710,8 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
             id = id | TILEMAP_INFRONT_FLAG;
         }
 
-        char buf[5];
-        if (!cfg_output_bin) {
+        if (!config.output_bin) {
+            char buf[5];
             sprintf(buf, "%04X", id);
             out << " $" << buf;
         }
@@ -720,16 +719,16 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
         outbuf.push_back(id);
 
         if (i % width == width - 1) {
-            if (!cfg_output_bin) out << "\n";
+            if (!config.output_bin) out << "\n";
             if (i < total_tiles - 1) {
-                if (!cfg_output_bin) out << ".dw";
+                if (!config.output_bin) out << ".dw";
                 height++;
             }
         }
     }
 
     // write binary outbuf to file
-    if (cfg_output_bin) out.write((const char*)outbuf.data(), outbuf.size() * 2);
+    if (config.output_bin) out.write((const char*)outbuf.data(), outbuf.size() * 2);
 
     out.close();
 }
@@ -919,16 +918,16 @@ void process_file(Config config) {
     if (config.palette_filename != NULL) {
         switch (config.paletteOutputFormat) {
             case GEN :
-                write_gen_palette_file(config.palette_filename, image);
+                write_gen_palette_file(config, config.palette_filename, image);
                 break;
             case SMS :
-                write_sms_palette_file(config.palette_filename, image);
+                write_sms_palette_file(config, config.palette_filename, image);
                 break;
             case SMS_CL123 :
                 write_sms_cl123_palette_file(config.palette_filename, image);
                 break;
             case GG :
-                write_gg_palette_file(config.palette_filename, image);
+                write_gg_palette_file(config, config.palette_filename, image);
                 break;
             default :
                 break;
