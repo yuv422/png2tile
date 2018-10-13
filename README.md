@@ -62,3 +62,13 @@ This project is heavily inspired by Maxim's BMP2Tile application https://github.
                          Output binary files instead of asm source files.
                          Ignored for sms_cl123 palette format, TMX, and PNG output.
 
+## Compiling png2tile
+
+png2tile uses `CMake`.
+
+Compiling should (hopefully) be as simple as
+
+```shell
+cmake .
+make
+```
