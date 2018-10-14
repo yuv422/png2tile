@@ -61,8 +61,19 @@ This project is heavily inspired by Maxim's BMP2Tile application https://github.
     -binary
                          Output binary files instead of asm source files.
                          Ignored for sms_cl123 palette format, TMX, and PNG output.
-
+    
     -compress
                          Compress output binary files. Uses STM compression for tilemaps
                          and PSG compression for tiles. Implies -binary if not also specified.
+
+## Compiling png2tile
+
+png2tile uses `CMake`.
+
+Compiling should (hopefully) be as simple as
+
+```shell
+cmake .
+make
+```
 
