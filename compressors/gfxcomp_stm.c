@@ -13,9 +13,9 @@
 #define MAX_RLE_LEN     MIN_RLE_LEN+63
 #define MAX_RAW_LEN     63
 
-int in_size;
+unsigned int in_size;
 bool shoudchangeHH;
-int current;
+size_t current;
 unsigned short int cur_HH;
 unsigned int writepos;
 unsigned short int* buf;
