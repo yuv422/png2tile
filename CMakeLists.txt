@@ -5,9 +5,15 @@ find_package(PNG REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-set(SOURCE_FILES main.cpp)
+set(SOURCE_FILES
+    compressors/gfxcomp_stm.c
+    compressors/gfxcomp_phantasystargaiden.cpp
+    main.cpp
+)
+
 add_executable(png2tile ${SOURCE_FILES})
 
 
 include_directories(${PNG_INCLUDE_DIR})
 target_link_libraries(png2tile ${PNG_LIBRARY} -lz)
+

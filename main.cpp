@@ -77,7 +77,14 @@ typedef struct {
     bool use_sprite_pal;
     bool infront_flag;
     bool output_bin;
+    bool compress;
 } Config;
+
+// forwards for compressors
+int PSGaiden_compressTiles(uint8_t* source, uint32_t numTiles, uint8_t* dest, uint32_t destLength);
+extern "C" {
+int STM_compressTilemap(uint8_t* source, uint32_t width, uint32_t height, uint8_t* dest, uint32_t destLen);
+}
 
 // PNG read/write logic based on code from Guillaume Cottenceau
 // http://zarb.org/~gc/html/libpng.html
@@ -289,7 +296,11 @@ void show_usage() {
             "\n"
             "-binary \n"
             "                     Output binary files instead of asm source files.\n"
-            "                     Ignored for sms_cl123 palette format, TMX, and PNG output.\n\n";
+            "                     Ignored for sms_cl123 palette format, TMX, and PNG output.\n"
+            "\n"
+            "-compress \n"
+            "                     Compress output binary files. Uses STM compression for tilemaps\n"
+            "                     and PSG compression for tiles. Implies -binary if not also specified.\n\n";
     std::cout << s;
 }
 
@@ -311,6 +322,7 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.infront_flag = false;
     config.tile_start_offset = 0;
     config.output_bin = false;
+    config.compress = false;
 
     config.output_tile_image_filename = NULL;
     config.tmx_filename = NULL;
@@ -407,6 +419,8 @@ Config parse_commandline_opts(int argc, char **argv) {
                 }
             } else if (strcmp(cmd, "binary") == 0) {
                 config.output_bin = true;
+            } else if (strcmp(cmd, "compress") == 0) {
+                config.compress = true;
             } else {
                 printf("Unknown option: '-%s'\n", cmd);
                 show_usage();
@@ -417,6 +431,10 @@ Config parse_commandline_opts(int argc, char **argv) {
     if (config.tileSize == TILE_8x16 && config.remove_dups) {
         printf("Warning: remove duplicates has been disabled because 8x16 tile size was selected.\n");
         config.remove_dups = false;
+    }
+    if (config.compress && !config.output_bin) {
+        printf("Warning: output changed to binary because compression was enabled.\n");
+        config.output_bin = true;
     }
 
     return config;
@@ -499,7 +517,22 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
     }
 
     // write binary outbuf to file
-    if (config.output_bin) out.write((const char*)outbuf.data(), outbuf.size());
+    int orig_sz = outbuf.size();
+
+    // compress
+    if (config.compress) {
+        uint8_t* comp_dat = (uint8_t*)malloc(orig_sz);
+
+        int comp_sz = PSGaiden_compressTiles(outbuf.data(), size, comp_dat, orig_sz);
+
+        std::cout << "Compressed tile data from " << orig_sz << " bytes to " << comp_sz
+            << " (" << (int)(comp_sz / (float)orig_sz * 100) << "%)." << std::endl;
+
+        out.write((const char*)comp_dat, comp_sz);
+        free(comp_dat); comp_dat = NULL;
+
+    // uncompressed binary
+    } else if (config.output_bin) out.write((const char*)outbuf.data(), orig_sz);
 
     out.close();
 }
@@ -522,6 +555,7 @@ void write_sms_palette_file(Config config, const char *filename, Image *input_im
         uint8_t c = (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].red)
                    | (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].green) << 2)
                    | (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].blue) << 4));
+
         if (!config.output_bin) {
             char buf[3];
             sprintf(buf, "%02X", c);
@@ -544,6 +578,7 @@ void write_gg_palette_file(Config config, const char *filename, Image *input_ima
         uint16_t c = ((uint16_t) input_image->palette[i].red >> 4)
                    | (uint16_t) (input_image->palette[i].green >> 4) << 4
                    | (uint16_t) (input_image->palette[i].blue >> 4) << 8;
+
         if (!config.output_bin) {
             char buf[5];
             sprintf(buf, "%04X", c);
@@ -566,6 +601,7 @@ void write_gen_palette_file(Config config, const char *filename, Image *input_im
         uint16_t c = (uint16_t)(((input_image->palette[i].red >> 4) & 0xE) << 0)
             | (uint16_t)(((input_image->palette[i].green >> 4) & 0xE) << 4)
             | (uint16_t)(((input_image->palette[i].blue >> 4) & 0xE) << 8);
+
         if (!config.output_bin) {
             char buf[5];
             sprintf(buf, "%04X", c);
@@ -728,7 +764,22 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
     }
 
     // write binary outbuf to file
-    if (config.output_bin) out.write((const char*)outbuf.data(), outbuf.size() * 2);
+    int orig_sz = outbuf.size() * 2;
+
+    // compress
+    if (config.compress) {
+        uint8_t* comp_dat = (uint8_t*)malloc(orig_sz);
+
+        int comp_sz = STM_compressTilemap((uint8_t*)outbuf.data(), width, height, comp_dat, orig_sz);
+
+        std::cout << "Compressed tilemap from " << orig_sz << " bytes to " << comp_sz
+            << " (" << (int)(comp_sz / (float)orig_sz * 100) << "%)." << std::endl;
+
+        out.write((const char*)comp_dat, comp_sz);
+        free(comp_dat); comp_dat = NULL;
+
+    // uncompressed binary
+    } else if (config.output_bin) out.write((const char*)outbuf.data(), orig_sz);
 
     out.close();
 }
@@ -852,6 +903,9 @@ void add_new_tile(std::vector<Tile *> *tiles, Tile *tile) {
 }
 
 void process_file(Config config) {
+    // some extra verbosity
+    printf("Processing \"%s\"...\n", config.input_filename);
+
     Image *image = read_png_file(config.input_filename);
     if (image == NULL) {
         return;
