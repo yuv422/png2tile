@@ -1,17 +1,35 @@
+/*
+The MIT License (MIT)
+
+Copyright (c) 2016-2021 Eric Fry
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
 #include <cstring>
 #include <string>
 #include <iostream>
 
-#include <png.h>
 #include <vector>
 #include <fstream>
 
-#define NUM_PIXELS_IN_TILE 64
-
-#define TILE_HEIGHT 8
-#define TILE_WIDTH 8
-
-#define PNG_HEADER_CHECK_SIZE 8
+#include "tile.h"
+#include "lodepng.h"
 
 #define NUM_TILE_COLS_IN_PNG_IMAGE 16
 
@@ -26,13 +44,15 @@
 #define TILEMAP_INFRONT_FLAG 0x1000
 
 typedef struct {
-    png_byte bit_depth;
-    int width, height;
-    png_colorp palette;
-    int num_palette_entries;
-    int stride;
-    png_bytepp row_pointers;
-    png_bytep pixels;
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+} Color;
+
+typedef struct {
+    unsigned int width, height;
+    Color palette[MAX_COLOURS];
+    std::vector<unsigned char> pixels;
 } Image;
 
 typedef enum {
@@ -51,15 +71,6 @@ typedef enum {
     TILE_FORMAT_PLANAR,
     TILE_FORMAT_CHUNKY
 } TileOutputFormat;
-
-typedef struct Tile {
-    uint16_t id;
-    char *data;
-    bool flipped_x;
-    bool flipped_y;
-    bool is_duplicate;
-    Tile *original_tile;
-} Tile;
 
 typedef struct {
     const char *input_filename;
@@ -86,160 +97,84 @@ extern "C" {
 int STM_compressTilemap(uint8_t* source, uint32_t width, uint32_t height, uint8_t* dest, uint32_t destLen);
 }
 
-// PNG read/write logic based on code from Guillaume Cottenceau
-// http://zarb.org/~gc/html/libpng.html
-
 Image *read_png_file(const char *filename) {
-    png_structp png_ptr;
-    png_infop info_ptr;
-
-    png_byte color_type;
-    png_byte header[PNG_HEADER_CHECK_SIZE];
-
+    std::vector<unsigned char> png;
     Image *image = new Image;
+    lodepng::State state;
 
-    /* open file and test for it being a png */
-    FILE *fp = fopen(filename, "rb");
-    if (!fp) {
-        printf("[read_png_file] File %s could not be opened for reading", filename);
-        exit(1);
-    }
-
-    fread(header, 1, PNG_HEADER_CHECK_SIZE, fp);
-    if (png_sig_cmp((png_bytep) header, 0, PNG_HEADER_CHECK_SIZE)) {
-        printf("[read_png_file] File %s is not recognized as a PNG file", filename);
-        exit(1);
-    }
-
-    png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-
-    if (!png_ptr) {
-        printf("[read_png_file] png_create_read_struct failed");
-        exit(1);
-    }
-
-    info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr) {
-        printf("[read_png_file] png_create_info_struct failed");
-        exit(1);
-    }
-
-    if (setjmp(png_jmpbuf(png_ptr))) {
-        printf("[read_png_file] Error during init_io");
-        exit(1);
-    }
-
-    png_init_io(png_ptr, fp);
-    png_set_sig_bytes(png_ptr, PNG_HEADER_CHECK_SIZE);
-
-    png_read_info(png_ptr, info_ptr);
-
-    image->width = png_get_image_width(png_ptr, info_ptr);
-    image->height = png_get_image_height(png_ptr, info_ptr);
-    color_type = png_get_color_type(png_ptr, info_ptr);
-    image->bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-
-
-    if (color_type != PNG_COLOR_TYPE_PALETTE) {
-        printf("[read_png_file] Only indexed PNG files allowed");
-        fclose(fp);
+    unsigned error = lodepng::load_file(png, filename);
+    if (!error) error = lodepng_inspect(&image->width, &image->height, &state, &png[0], png.size());
+    if (error) {
+        std::cout << "[read_png_file] error reading file " << error << ": "<< lodepng_error_text(error) << std::endl;
         delete image;
-        return NULL;
+        return nullptr;
     }
 
-    png_get_PLTE(png_ptr, info_ptr, &image->palette, &image->num_palette_entries);
+    if (state.info_png.color.colortype != LCT_PALETTE) {
+        printf("[read_png_file] Only indexed PNG files allowed\n");
+        delete image;
+        return nullptr;
+    }
 
-    if (image->bit_depth > 4) {
+    if (state.info_png.color.bitdepth > 4) {
         printf("[read_png_file] PNG bit depth > 4. Only the first 16 colours will be used.\n");
     }
 
-    png_set_interlace_handling(png_ptr);
-    png_set_packing(png_ptr);
-    png_read_update_info(png_ptr, info_ptr);
+    state.info_raw.colortype = LCT_PALETTE;
+    state.info_raw.bitdepth = 8;
 
 
-    /* read file */
-    if (setjmp(png_jmpbuf(png_ptr))) {
-        printf("[read_png_file] Error during read_image");
-        exit(1);
+    if(!error) error = lodepng::decode(image->pixels, image->width, image->height, state, png);
+    if (error) {
+        std::cout << "[read_png_file] decoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
+        delete image;
+        return nullptr;
     }
 
-    image->row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * image->height);
-    image->stride = image->width;
-    image->pixels = (png_bytep) malloc(image->stride * image->height);
-    for (int y = 0; y < image->height; y++)
-        image->row_pointers[y] = &image->pixels[y * image->stride];
+    // Remove all colors after the first 16 palette entries.
+    for (int y = 0; y < image->height; y++) {
+        for (int x = 0; x < image->width; x++) {
+            if (image->pixels[x + y * image->width] >= MAX_COLOURS) {
+                printf("Warning: color palette index[%d] used at pixel(%d,%d).\n", image->pixels[x + y * image->width], x, y);
+                image->pixels[x + y * image->width] = 0;
+            }
+        }
+    }
 
-
-    png_read_image(png_ptr, image->row_pointers);
-
-    fclose(fp);
-
+    for(int i = 0; i < MAX_COLOURS; i++) {
+        if (i < state.info_png.color.palettesize) {
+            image->palette[i].red = state.info_png.color.palette[i * 4];
+            image->palette[i].green = state.info_png.color.palette[i * 4 + 1];
+            image->palette[i].blue = state.info_png.color.palette[i * 4 + 2];
+        } else {
+            image->palette[i].red   = 0;
+            image->palette[i].green = 0;
+            image->palette[i].blue  = 0;
+        }
+    }
     return image;
 }
 
-void write_png_file(const char *filename, int width, int height, png_byte bit_depth, char *pixels, png_colorp palette,
-                    int num_colours) {
+void write_png_file(const char *filename, int width, int height, const unsigned char *pixels, Color *palette) {
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_raw.colortype = LCT_PALETTE;
+    state.info_raw.bitdepth = 8;
 
-    png_structp png_ptr;
-    png_infop info_ptr;
-    png_bytepp row_pointers;
-
-    row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * height);
-    for (int y = 0; y < height; y++)
-        row_pointers[y] = (png_byte *) &pixels[y * width];
-
-    /* create file */
-    FILE *fp = fopen(filename, "wb");
-    if (!fp)
-        printf("[write_png_file] File %s could not be opened for writing", filename);
-
-
-    /* initialize stuff */
-    png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-
-    if (!png_ptr)
-        printf("[write_png_file] png_create_write_struct failed");
-
-    info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr)
-        printf("[write_png_file] png_create_info_struct failed");
-
-    if (setjmp(png_jmpbuf(png_ptr)))
-        printf("[write_png_file] Error during init_io");
-
-    png_init_io(png_ptr, fp);
-
-
-    /* write header */
-    if (setjmp(png_jmpbuf(png_ptr)))
-        printf("[write_png_file] Error during writing header");
-
-    bit_depth = 8; //FIXME we should repack the pixels down to the correct bit depth.
-    png_set_IHDR(png_ptr, info_ptr, width, height,
-                 bit_depth, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE,
-                 PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
-
-    png_set_PLTE(png_ptr, info_ptr, palette, num_colours);
-
-    png_write_info(png_ptr, info_ptr);
-
-    /* write bytes */
-    if (setjmp(png_jmpbuf(png_ptr)))
-        printf("[write_png_file] Error during writing bytes");
-
-    png_write_image(png_ptr, row_pointers);
-
-
-    /* end write */
-    if (setjmp(png_jmpbuf(png_ptr)))
-        printf("[write_png_file] Error during end of write");
-
-    png_write_end(png_ptr, NULL);
-
-    free(row_pointers);
-
-    fclose(fp);
+    for (int i = 0; i < MAX_COLOURS; i++) {
+        lodepng_palette_add(
+                &state.info_raw,
+                palette[i].red,
+                palette[i].green,
+                palette[i].blue,
+                0xFF
+        );
+    }
+    unsigned error = lodepng::encode(png, pixels, (unsigned )width, (unsigned )height, state);
+    if(!error) lodepng::save_file(png, filename);
+    if (error) {
+        std::cout << "[write_png_file] encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
+    }
 }
 
 void show_usage() {
@@ -450,15 +385,15 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
     output_width *= TILE_WIDTH;
     output_height *= TILE_HEIGHT;
 
-    char *pixels = (char *) malloc(output_width * output_height);
+    unsigned char *pixels = (unsigned char *) malloc(output_width * output_height);
     memset(pixels, 0, output_width * output_height);
     int size = (int) tiles->size();
 
     for (int i = 0; i < size; i++) {
-        char *ptr = &pixels[(i / NUM_TILE_COLS_IN_PNG_IMAGE) * output_width * TILE_HEIGHT +
+        unsigned char *ptr = &pixels[(i / NUM_TILE_COLS_IN_PNG_IMAGE) * output_width * TILE_HEIGHT +
                             (i % NUM_TILE_COLS_IN_PNG_IMAGE) * TILE_WIDTH];
         Tile *tile = tiles->at(i);
-        char *tile_data_ptr = tile->data;
+        unsigned char *tile_data_ptr = tile->data;
         for (int j = 0; j < TILE_WIDTH; j++) {
             memcpy(ptr, tile_data_ptr, TILE_WIDTH);
             tile_data_ptr += TILE_WIDTH;
@@ -466,8 +401,7 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
         }
     }
 
-    write_png_file(output_image_filename, output_width, output_height, input_image->bit_depth, pixels,
-                   input_image->palette, input_image->num_palette_entries);
+    write_png_file(output_image_filename, output_width, output_height, pixels, input_image->palette);
 }
 
 void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles) {
@@ -785,81 +719,24 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
 }
 
 Tile *find_duplicate(Tile *tile, std::vector<Tile *> *tiles) {
-    int size = (int) tiles->size();
-
-    for (int i = 0; i < size; i++) {
-        Tile *t = tiles->at(i);
-        int count = 0;
-        for (; count < NUM_PIXELS_IN_TILE; count++) {
-            if (t->data[count] != tile->data[count]) {
-                break;
-            }
-        }
-        if (count == NUM_PIXELS_IN_TILE) {
+    for (auto t : *tiles) {
+        if (tile->isDataEqual(t)) {
             return t;
         }
     }
 
-    return NULL;
-}
-
-Tile *new_tile(int id, bool flipped_x, bool flipped_y, bool is_duplicate, Tile *original_tile) {
-    Tile *tile = new Tile;
-
-    tile->id = id;
-
-    tile->flipped_x = flipped_x;
-    tile->flipped_y = flipped_y;
-
-    tile->is_duplicate = is_duplicate;
-    tile->original_tile = original_tile;
-
-    tile->data = (char *) malloc(NUM_PIXELS_IN_TILE);
-
-    return tile;
-}
-
-Tile *tile_flip_x(Tile *tile) {
-    Tile *flipped_tile = new_tile(tile->id, true, tile->flipped_y, tile->is_duplicate, tile->original_tile);
-
-    for (int y = 0; y < TILE_HEIGHT; y++) {
-        for (int x = 0; x < TILE_WIDTH; x++) {
-            flipped_tile->data[y * TILE_WIDTH + x] = tile->data[y * TILE_WIDTH + ((TILE_WIDTH - 1) - x)];
-        }
-    }
-
-    return flipped_tile;
-}
-
-Tile *tile_flip_y(Tile *tile) {
-    Tile *flipped_tile = new_tile(tile->id, tile->flipped_x, true, tile->is_duplicate, tile->original_tile);
-
-    for (int x = 0; x < TILE_WIDTH; x++) {
-        for (int y = 0; y < TILE_HEIGHT; y++) {
-            flipped_tile->data[y * TILE_WIDTH + x] = tile->data[(TILE_HEIGHT - 1 - y) * TILE_WIDTH + x];
-        }
-    }
-
-    return flipped_tile;
-}
-
-Tile *tile_flip_xy(Tile *tile) {
-    Tile *flipped_x = tile_flip_x(tile);
-    Tile *flipped_xy = tile_flip_y(flipped_x);
-    delete flipped_x;
-
-    return flipped_xy;
+    return nullptr;
 }
 
 Tile *createTile(Image *image, int x, int y, int w, int h, std::vector<Tile *> *tiles, bool mirrored) {
-    Tile *tile = new_tile(0, false, false, false, NULL);
+    Tile *tile = new Tile(0, false, false, false, nullptr);
 
-    png_bytep ptr = image->pixels + y * image->stride + x;
-    char *tile_ptr = tile->data;
+    unsigned char *ptr = &image->pixels[0] + y * image->width + x;
+    unsigned char *tile_ptr = tile->data;
     for (int i = 0; i < h; i++) {
         memcpy(tile_ptr, ptr, w);
         tile_ptr += w;
-        ptr += image->stride;
+        ptr += image->width;
     }
 
     tile->original_tile = find_duplicate(tile, tiles);
@@ -868,21 +745,21 @@ Tile *createTile(Image *image, int x, int y, int w, int h, std::vector<Tile *> *
     }
 
     if (mirrored && !tile->is_duplicate) {
-        Tile *flipped = tile_flip_x(tile);
+        Tile *flipped = tile->flipX();
         tile->original_tile = find_duplicate(flipped, tiles);
         delete flipped;
         if (tile->original_tile) {
             tile->flipped_x = true;
             tile->is_duplicate = true;
         } else {
-            flipped = tile_flip_y(tile);
+            flipped = tile->flipY();
             tile->original_tile = find_duplicate(flipped, tiles);
             delete flipped;
             if (tile->original_tile) {
                 tile->flipped_y = true;
                 tile->is_duplicate = true;
             } else {
-                flipped = tile_flip_xy(tile);
+                flipped = tile->flipXY();
                 tile->original_tile = find_duplicate(flipped, tiles);
                 delete flipped;
                 if (tile->original_tile) {

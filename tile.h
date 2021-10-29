@@ -1,3 +1,4 @@
+/*
 The MIT License (MIT)
 
 Copyright (c) 2016-2021 Eric Fry
@@ -19,3 +20,33 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+*/
+#ifndef PNG2TILE_TILE_H
+#define PNG2TILE_TILE_H
+
+#include <cstdint>
+#define NUM_PIXELS_IN_TILE 64
+
+#define TILE_HEIGHT 8
+#define TILE_WIDTH 8
+
+class Tile {
+public:
+    uint16_t id;
+    unsigned char data[NUM_PIXELS_IN_TILE];
+    bool flipped_x;
+    bool flipped_y;
+    bool is_duplicate;
+    Tile *original_tile;
+
+    Tile(uint16_t id, bool flippedX, bool flippedY, bool isDuplicate, Tile *originalTile);
+
+    Tile *flipX();
+    Tile *flipY();
+    Tile *flipXY();
+
+    bool isDataEqual(Tile *anotherTile);
+};
+
+
+#endif //PNG2TILE_TILE_H
