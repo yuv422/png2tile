@@ -1,14 +1,14 @@
 # png2tile
-Convert PNG images into Sega Master System tile format.
+Convert PNG images into Sega Master System / Mega drive tile format.
 
-It is written in C++ and requires the libpng library. It should be fairly portable.
+It is written in C++ and should be fairly portable. PNG read/write is provided by [LodePNG](https://github.com/lvandeve/lodepng). 
 
 This project is heavily inspired by Maxim's BMP2Tile application https://github.com/maxim-zhao/bmp2tile
 
 ## Usage
 
 
-    png2tile <filename> [options]
+    png2tile <png filename> [options]
     
     Option               Effect
     
