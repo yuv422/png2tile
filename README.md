@@ -1,9 +1,17 @@
 # png2tile
+[![Build status](https://ci.appveyor.com/api/projects/status/6jmr85ie4nko8rj0?svg=true)](https://ci.appveyor.com/project/yuv422/png2tile)
+
 Convert PNG images into Sega Master System / Mega drive tile format.
 
 It is written in C++ and should be fairly portable. PNG read/write is provided by [LodePNG](https://github.com/lvandeve/lodepng). 
 
 This project is heavily inspired by Maxim's BMP2Tile application https://github.com/maxim-zhao/bmp2tile
+
+Compression code also from Maxim https://github.com/maxim-zhao/bmp2tilecompressors
+
+## Source
+
+https://github.com/yuv422/png2tile
 
 ## Usage
 

@@ -22,7 +22,7 @@ before_build:
   - cmd: cmake -G "Visual Studio 15 2017" ..
 
 after_build:
-  - cmd: 7z a c:\projects\png2tile\png2tile.zip c:\projects\png2tile\build\Release\png2tile.exe
+  - cmd: 7z a c:\projects\png2tile\png2tile.zip c:\projects\png2tile\build\Release\png2tile.exe c:\projects\png2tile\LICENSE c:\projects\png2tile\README.md
 
 artifacts:
   - path: png2tile.zip
