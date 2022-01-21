@@ -779,13 +779,13 @@ void add_new_tile(std::vector<Tile *> *tiles, Tile *tile) {
     tiles->push_back(tile);
 }
 
-void process_file(Config config) {
+int process_file(Config config) {
     // some extra verbosity
     printf("Processing \"%s\"...\n", config.input_filename);
 
     Image *image = read_png_file(config.input_filename);
     if (image == NULL) {
-        return;
+        return -1;
     }
 
     if (image->width % TILE_WIDTH != 0) {
@@ -872,12 +872,12 @@ void process_file(Config config) {
     if (config.tiles_filename != NULL) {
         write_tiles(config, config.tiles_filename, &tiles);
     }
+
+	return 0;
 }
 
 int main(int argc, char **argv) {
     Config cfg = parse_commandline_opts(argc, argv);
-    process_file(cfg);
-
-    return 0;
+    return process_file(cfg);
 }
 
