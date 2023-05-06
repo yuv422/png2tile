@@ -24,6 +24,9 @@ before_build:
 after_build:
   - cmd: 7z a c:\projects\png2tile\png2tile.zip c:\projects\png2tile\build\Release\png2tile.exe c:\projects\png2tile\LICENSE c:\projects\png2tile\README.md
 
+build:
+  project: c:\projects\png2tile\build\png2tile.sln
+
 artifacts:
   - path: png2tile.zip
     name: png2tile
