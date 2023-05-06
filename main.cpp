@@ -92,7 +92,7 @@ typedef struct {
 } Config;
 
 // forwards for compressors
-int PSGaiden_compressTiles(uint8_t* source, uint32_t numTiles, uint8_t* dest, uint32_t destLength);
+int PSGaiden_compressTiles(const uint8_t* pSource, const uint32_t numTiles, uint8_t* pDestination, const uint32_t destinationLength);
 extern "C" {
 int STM_compressTilemap(uint8_t* source, uint32_t width, uint32_t height, uint8_t* dest, uint32_t destLen);
 }
