@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.30)
 project(png2tile)
 
 set (CMAKE_CXX_STANDARD 11)

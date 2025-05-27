@@ -133,8 +133,8 @@ Image *read_png_file(const char *filename, bool quiet) {
     }
 
     // Remove all colors after the first 16 palette entries.
-    for (int y = 0; y < image->height; y++) {
-        for (int x = 0; x < image->width; x++) {
+    for (unsigned int y = 0; y < image->height; y++) {
+        for (unsigned int x = 0; x < image->width; x++) {
             if (image->pixels[x + y * image->width] >= MAX_COLOURS) {
                 printf("Warning: color palette index[%d] used at pixel(%d,%d).\n", image->pixels[x + y * image->width], x, y);
                 image->pixels[x + y * image->width] = 0;
@@ -262,12 +262,13 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.tile_start_offset = 0;
     config.output_bin = false;
     config.compress = false;
+    config.quiet = false;
 
-    config.output_tile_image_filename = NULL;
-    config.tmx_filename = NULL;
-    config.palette_filename = NULL;
-    config.tilemap_filename = NULL;
-    config.tiles_filename = NULL;
+    config.output_tile_image_filename = nullptr;
+    config.tmx_filename = nullptr;
+    config.palette_filename = nullptr;
+    config.tilemap_filename = nullptr;
+    config.tiles_filename = nullptr;
 
     for (int i = 2; i < argc; i++) {
         const char *option = argv[i];
@@ -308,7 +309,7 @@ Config parse_commandline_opts(int argc, char **argv) {
             } else if (strcmp(cmd, "tileoffset") == 0) {
                 i++;
                 if (i < argc) {
-                    config.tile_start_offset = strtol(argv[i], NULL, 0);
+                    config.tile_start_offset = strtol(argv[i], nullptr, 0);
                 }
             } else if (strcmp(cmd, "spritepalette") == 0) {
                 config.use_sprite_pal = true;
@@ -384,7 +385,7 @@ Config parse_commandline_opts(int argc, char **argv) {
 
 void write_tiles_to_png_image(const char *output_image_filename, Image *input_image, std::vector<Tile *> *tiles) {
     int output_width = 16;
-    int output_height = tiles->size() / output_width;
+    int output_height = (int)tiles->size() / output_width;
     if (tiles->size() % output_width != 0) {
         output_height++;
     }
@@ -411,7 +412,7 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
     write_png_file(output_image_filename, output_width, output_height, pixels, input_image->palette);
 }
 
-void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles) {
+void write_tiles(const Config &config, const char *filename, std::vector<Tile *> *tiles) {
     int size = (int) tiles->size();
 
     std::ofstream out;
@@ -424,7 +425,7 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
         Tile *tile = tiles->at(i);
         char buf[32];
         if (!config.output_bin) {
-            sprintf(buf, "%03X", i + config.tile_start_offset);
+            snprintf(buf, 32, "%03X", i + config.tile_start_offset);
             out << "; Tile index $" << buf << "\n";
             out << ".db";
         }
@@ -438,7 +439,7 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
                         byte |= ((pixel >> p & 1) << (7 - x));
                     }
                     if (!config.output_bin) {
-                        sprintf(buf, "%02X", byte);
+                        snprintf(buf, 32, "%02X", byte);
                         out << " $" << buf;
                     }
                     outbuf.push_back(byte);
@@ -448,7 +449,7 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
             for (int j = 0; j < NUM_PIXELS_IN_TILE; j += 2) {
                 uint8_t outbyte = (uint8_t) (tile->data[j + 1] & 0xF) | ((uint8_t) (tile->data[j] & 0xF) << 4);
                 if (!config.output_bin) {
-                    sprintf(buf, "%02X", outbyte);
+                    snprintf(buf, 32, "%02X", outbyte);
                     out << " $" << buf;
                 }
                 outbuf.push_back(outbyte);
@@ -458,7 +459,7 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
     }
 
     // write binary outbuf to file
-    int orig_sz = outbuf.size();
+    int orig_sz = (int)outbuf.size();
 
     // compress
     if (config.compress) {
@@ -472,7 +473,7 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
         }
 
         out.write((const char*)comp_dat, comp_sz);
-        free(comp_dat); comp_dat = NULL;
+        free(comp_dat); comp_dat = nullptr;
 
     // uncompressed binary
     } else if (config.output_bin) out.write((const char*)outbuf.data(), orig_sz);
@@ -487,7 +488,7 @@ uint8_t convert_colour_channel_to_2bit(uint8_t c) {
     return 3;
 }
 
-void write_sms_palette_file(Config config, const char *filename, Image *input_image) {
+void write_sms_palette_file(const Config& config, const char *filename, Image *input_image) {
     std::ofstream out;
     out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
@@ -501,7 +502,7 @@ void write_sms_palette_file(Config config, const char *filename, Image *input_im
 
         if (!config.output_bin) {
             char buf[3];
-            sprintf(buf, "%02X", c);
+            snprintf(buf, 3, "%02X", c);
             out << " $" << buf;
         } else out.write((const char*)&c, 1);
     }
@@ -510,7 +511,7 @@ void write_sms_palette_file(Config config, const char *filename, Image *input_im
     out.close();
 }
 
-void write_gg_palette_file(Config config, const char *filename, Image *input_image) {
+void write_gg_palette_file(const Config& config, const char *filename, Image *input_image) {
     std::ofstream out;
     out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
@@ -524,7 +525,7 @@ void write_gg_palette_file(Config config, const char *filename, Image *input_ima
 
         if (!config.output_bin) {
             char buf[5];
-            sprintf(buf, "%04X", c);
+            snprintf(buf, 5, "%04X", c);
             out << " $" << buf;
         } else out.write((const char*)&c, 2);
     }
@@ -533,7 +534,7 @@ void write_gg_palette_file(Config config, const char *filename, Image *input_ima
     out.close();
 }
 
-void write_gen_palette_file(Config config, const char *filename, Image *input_image) {
+void write_gen_palette_file(const Config& config, const char *filename, Image *input_image) {
     std::ofstream out;
     out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
@@ -547,7 +548,7 @@ void write_gen_palette_file(Config config, const char *filename, Image *input_im
 
         if (!config.output_bin) {
             char buf[5];
-            sprintf(buf, "%04X", c);
+            snprintf(buf, 5, "%04X", c);
             out << " $" << buf;
         } else out.write((const char*)&c, 2);
     }
@@ -577,7 +578,7 @@ void write_sms_cl123_palette_file(const char *filename, Image *input_image) {
 unsigned int get_tmx_tile_id(std::vector<Tile *> *tilemap, int index) {
     Tile *t = tilemap->at(index);
 
-    unsigned int id = t->original_tile != NULL ? (unsigned int) t->original_tile->id : (unsigned int) t->id;
+    unsigned int id = t->original_tile != nullptr ? (unsigned int) t->original_tile->id : (unsigned int) t->id;
     id++;
     if (t->flipped_x) {
         id = id | TMX_FLIP_X_FLAG;
@@ -616,7 +617,7 @@ void write_tmx_file(const char *filename, Image *input_image, std::vector<Tile *
     out << " <layer name=\"Bottom\" width=\"" << tilemap_width << "\" height=\"" << tilemap_height << "\">\n";
     out << "  <data encoding=\"csv\" >";
 
-    int total_tiles = tilemap->size();
+    int total_tiles = (int)tilemap->size();
 
     if (tileSize == TILE_8x8) {
         for (int i = 0; i < total_tiles; i++) {
@@ -658,7 +659,7 @@ void write_tmx_file(const char *filename, Image *input_image, std::vector<Tile *
     out.close();
 }
 
-void write_tilemap_file(Config config, const char *filename, std::vector<Tile *> *tilemap, int width) {
+void write_tilemap_file(const Config& config, const char *filename, std::vector<Tile *> *tilemap, int width) {
     std::ofstream out;
     out.open(filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
@@ -667,11 +668,11 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
     if (!config.output_bin) out << ".dw";
     int height = 1;
 
-    int total_tiles = tilemap->size();
+    int total_tiles = (int)tilemap->size();
     for (int i = 0; i < total_tiles; i++) {
         Tile *t = tilemap->at(i);
 
-        uint16_t id = t->original_tile != NULL ? (uint16_t) t->original_tile->id : (uint16_t) t->id;
+        uint16_t id = t->original_tile != nullptr ? (uint16_t) t->original_tile->id : (uint16_t) t->id;
         id += config.tile_start_offset;
 
         if (t->flipped_x) {
@@ -691,7 +692,7 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
 
         if (!config.output_bin) {
             char buf[5];
-            sprintf(buf, "%04X", id);
+            snprintf(buf, 5, "%04X", id);
             out << " $" << buf;
         }
 
@@ -707,7 +708,7 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
     }
 
     // write binary outbuf to file
-    int orig_sz = outbuf.size() * 2;
+    int orig_sz = (int)outbuf.size() * 2;
 
     // compress
     if (config.compress) {
@@ -720,7 +721,7 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
         }
 
         out.write((const char*)comp_dat, comp_sz);
-        free(comp_dat); comp_dat = NULL;
+        free(comp_dat); comp_dat = nullptr;
 
     // uncompressed binary
     } else if (config.output_bin) out.write((const char*)outbuf.data(), orig_sz);
@@ -785,19 +786,20 @@ Tile *createTile(Image *image, int x, int y, int w, int h, std::vector<Tile *> *
 }
 
 void add_new_tile(std::vector<Tile *> *tiles, Tile *tile) {
-    tile->id = tiles->size();
+    tile->id = (uint16_t)tiles->size();
     tiles->push_back(tile);
 }
 
-int process_file(Config config) {
+int process_file(const Config &config) {
     // some extra verbosity
     if (!config.quiet) {
         printf("Processing \"%s\"...\n", config.input_filename);
     }
 
     Image *image = read_png_file(config.input_filename, config.quiet);
-    if (image == NULL) {
-        return -1;
+    if (image == nullptr) {
+        printf("Failed to open file:  %s\n", config.input_filename);
+        return 1;
     }
 
     if (image->width % TILE_WIDTH != 0) {
@@ -819,8 +821,8 @@ int process_file(Config config) {
     std::vector<Tile *> tiles;
 
     if (config.tileSize == TILE_8x8) {
-        for (int y = 0; y < image->height; y += TILE_HEIGHT) {
-            for (int x = 0; x < image->width; x += TILE_WIDTH) {
+        for (unsigned int y = 0; y < image->height; y += TILE_HEIGHT) {
+            for (unsigned int x = 0; x < image->width; x += TILE_WIDTH) {
                 Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
 
                 if (!tile->is_duplicate || !config.remove_dups) {
@@ -830,8 +832,8 @@ int process_file(Config config) {
             }
         }
     } else if (config.tileSize == TILE_8x16) {
-        for (int y = 0; y < image->height; y += TILE_HEIGHT * 2) {
-            for (int x = 0; x < image->width; x += TILE_WIDTH) {
+        for (unsigned int y = 0; y < image->height; y += TILE_HEIGHT * 2) {
+            for (unsigned int x = 0; x < image->width; x += TILE_WIDTH) {
                 Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
 
                 if (!tile->is_duplicate || !config.remove_dups) {
@@ -852,15 +854,15 @@ int process_file(Config config) {
         printf("tilemap: %d, tiles: %d\n", (int) tilemap.size(), (int) tiles.size());
     }
 
-    if (config.output_tile_image_filename != NULL) {
+    if (config.output_tile_image_filename != nullptr) {
         write_tiles_to_png_image(config.output_tile_image_filename, image, &tiles);
     }
 
-    if (config.tmx_filename != NULL) {
+    if (config.tmx_filename != nullptr) {
         write_tmx_file(config.tmx_filename, image, &tiles, &tilemap, config.tileSize);
     }
 
-    if (config.palette_filename != NULL) {
+    if (config.palette_filename != nullptr) {
         switch (config.paletteOutputFormat) {
             case GEN :
                 write_gen_palette_file(config, config.palette_filename, image);
@@ -879,19 +881,20 @@ int process_file(Config config) {
         }
     }
 
-    if (config.tilemap_filename != NULL) {
+    if (config.tilemap_filename != nullptr) {
         write_tilemap_file(config, config.tilemap_filename, &tilemap, image->width / TILE_WIDTH);
     }
 
-    if (config.tiles_filename != NULL) {
+    if (config.tiles_filename != nullptr) {
         write_tiles(config, config.tiles_filename, &tiles);
     }
 
-	return 0;
+    delete image;
+    return 0;
 }
 
 int main(int argc, char **argv) {
-    Config cfg = parse_commandline_opts(argc, argv);
+    const Config cfg = parse_commandline_opts(argc, argv);
     return process_file(cfg);
 }
 
