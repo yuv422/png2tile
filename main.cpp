@@ -89,6 +89,7 @@ typedef struct {
     bool infront_flag;
     bool output_bin;
     bool compress;
+    bool quiet;
 } Config;
 
 // forwards for compressors
@@ -97,7 +98,7 @@ extern "C" {
 int STM_compressTilemap(uint8_t* source, uint32_t width, uint32_t height, uint8_t* dest, uint32_t destLen);
 }
 
-Image *read_png_file(const char *filename) {
+Image *read_png_file(const char *filename, bool quiet) {
     std::vector<unsigned char> png;
     Image *image = new Image;
     lodepng::State state;
@@ -116,7 +117,7 @@ Image *read_png_file(const char *filename) {
         return nullptr;
     }
 
-    if (state.info_png.color.bitdepth > 4) {
+    if (!quiet && state.info_png.color.bitdepth > 4) {
         printf("[read_png_file] PNG bit depth > 4. Only the first 16 colours will be used.\n");
     }
 
@@ -235,7 +236,10 @@ void show_usage() {
             "\n"
             "-compress \n"
             "                     Compress output binary files. Uses STM compression for tilemaps\n"
-            "                     and PSG compression for tiles. Implies -binary if not also specified.\n\n";
+            "                     and PSG compression for tiles. Implies -binary if not also specified.\n"
+            "\n"
+            "-quiet               Reduce verbosity.\n\n";
+
     std::cout << s;
 }
 
@@ -356,9 +360,12 @@ Config parse_commandline_opts(int argc, char **argv) {
                 config.output_bin = true;
             } else if (strcmp(cmd, "compress") == 0) {
                 config.compress = true;
+            } else if (strcmp(cmd, "quiet") == 0) {
+                config.quiet = true;
             } else {
                 printf("Unknown option: '-%s'\n", cmd);
                 show_usage();
+                exit(1);
             }
         }
     }
@@ -459,8 +466,10 @@ void write_tiles(Config config, const char *filename, std::vector<Tile *> *tiles
 
         int comp_sz = PSGaiden_compressTiles(outbuf.data(), size, comp_dat, orig_sz);
 
-        std::cout << "Compressed tile data from " << orig_sz << " bytes to " << comp_sz
-            << " (" << (int)(comp_sz / (float)orig_sz * 100) << "%)." << std::endl;
+        if (!config.quiet) {
+            std::cout << "Compressed tile data from " << orig_sz << " bytes to " << comp_sz
+                << " (" << (int)(comp_sz / (float)orig_sz * 100) << "%)." << std::endl;
+        }
 
         out.write((const char*)comp_dat, comp_sz);
         free(comp_dat); comp_dat = NULL;
@@ -705,9 +714,10 @@ void write_tilemap_file(Config config, const char *filename, std::vector<Tile *>
         uint8_t* comp_dat = (uint8_t*)malloc(orig_sz);
 
         int comp_sz = STM_compressTilemap((uint8_t*)outbuf.data(), width, height, comp_dat, orig_sz);
-
-        std::cout << "Compressed tilemap from " << orig_sz << " bytes to " << comp_sz
-            << " (" << (int)(comp_sz / (float)orig_sz * 100) << "%)." << std::endl;
+        if (!config.quiet) {
+            std::cout << "Compressed tilemap from " << orig_sz << " bytes to " << comp_sz
+                << " (" << (int)(comp_sz / (float)orig_sz * 100) << "%)." << std::endl;
+        }
 
         out.write((const char*)comp_dat, comp_sz);
         free(comp_dat); comp_dat = NULL;
@@ -781,9 +791,11 @@ void add_new_tile(std::vector<Tile *> *tiles, Tile *tile) {
 
 int process_file(Config config) {
     // some extra verbosity
-    printf("Processing \"%s\"...\n", config.input_filename);
+    if (!config.quiet) {
+        printf("Processing \"%s\"...\n", config.input_filename);
+    }
 
-    Image *image = read_png_file(config.input_filename);
+    Image *image = read_png_file(config.input_filename, config.quiet);
     if (image == NULL) {
         return -1;
     }
@@ -836,7 +848,9 @@ int process_file(Config config) {
             }
         }
     }
-    printf("tilemap: %d, tiles: %d\n", (int) tilemap.size(), (int) tiles.size());
+    if (!config.quiet) {
+        printf("tilemap: %d, tiles: %d\n", (int) tilemap.size(), (int) tiles.size());
+    }
 
     if (config.output_tile_image_filename != NULL) {
         write_tiles_to_png_image(config.output_tile_image_filename, image, &tiles);
