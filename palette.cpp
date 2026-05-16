@@ -73,8 +73,8 @@ bool backtrack(
 
 std::vector<std::set<int>> reduceToNBuckets(
     std::vector<std::set<int>> inputs,
-    size_t numBuckets,
-    size_t maxSize)
+    std::size_t numBuckets,
+    std::size_t maxSize)
 {
     if (numBuckets < 2 || numBuckets > 4)
         throw std::invalid_argument("numBuckets must be between 2 and 4 inclusive");

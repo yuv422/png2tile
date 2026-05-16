@@ -28,7 +28,7 @@ SOFTWARE.
 
 std::vector<std::set<int>> reduceToNBuckets(
     std::vector<std::set<int>> inputs,
-    size_t numBuckets,
-    size_t maxSize = 16);
+    std::size_t numBuckets,
+    std::size_t maxSize = 16);
 
 #endif //PNG2TILE_PALETTE_H
