@@ -862,7 +862,6 @@ std::vector<std::set<int>> combineSupersets(std::vector<std::set<int>> sets) {
 }
 
 std::vector<std::vector<Color>> createPalettes(const Config &config, Image *image, std::vector<Tile *> &tiles) {
-    std::set<int> maxColors;
     std::vector<std::set<int>> supersets;
     std::vector<std::vector<Color>> palettes;
 
@@ -873,33 +872,34 @@ std::vector<std::vector<Color>> createPalettes(const Config &config, Image *imag
             for (int i = 0; i < NUM_PIXELS_IN_TILE; i++) {
                 colors.insert(tile->data[i]);
             }
-
-            if (colors.size() > maxColors.size()) {
-                maxColors = colors;
-            }
             supersets.push_back(colors);
         }
         supersets = combineSupersets(supersets);
-        supersets = reduceToNBuckets(supersets, config.numPalettes, 16);
-        std::cout << "num reduced sets" << supersets.size() << std::endl;
+        supersets = reduceToNBuckets(supersets, config.numPalettes, MAX_COLOURS);
+        // std::cout << "num reduced sets" << supersets.size() << std::endl;
     } else {
-        int palIdx = 0;
-        for (int i = 0; i < config.numPalettes; i++) {
+        // use existing palettes from input image
+        for (int palIdx = 0; palIdx < config.numPalettes; palIdx++) {
             std::set<int> palette;
-            for (int j = 0; j < 16; j++) {
-                if (i > 0 && j == 0) {
+            int numColors = image->palette.size() >= (palIdx+1) * MAX_COLOURS
+                ? MAX_COLOURS
+                : image->palette.size() - palIdx * MAX_COLOURS;
+            if (numColors < 0) {
+                numColors = 0;
+            }
+            for (int j = 0; j < numColors; j++) {
+                if (palIdx > 0 && j == 0) {
                     palette.insert(0); // use the base bg pal entry for sprite palettes
                 } else {
-                    palette.insert(i * 16 + j);
+                    palette.insert(palIdx * MAX_COLOURS + j);
                 }
-                palIdx++;
             }
             supersets.push_back(palette);
 
             // force any tile using the sprite palette to use the base bg pal entry.
             for (Tile *tile : tiles) {
                 for (int i = 0; i < NUM_PIXELS_IN_TILE; i++) {
-                    if (tile->data[i] % 16 == 0) {
+                    if (tile->data[i] % MAX_COLOURS == 0) {
                         tile->data[i] = 0;
                     }
                 }
@@ -910,16 +910,19 @@ std::vector<std::vector<Color>> createPalettes(const Config &config, Image *imag
     for (const auto &set: supersets) {
         std::vector<Color> palette;
         const char *sep = " ";
+        if (!config.quiet) std::cout << "Palette: ";
         for (const int &value : set) {
-            std::cout << sep << value; sep = ", ";
+            if (!config.quiet) std::cout << sep << value; sep = ", ";
             palette.push_back(image->palette[value]);
         }
-        if (palette.size() < 16) {
-            for (int i = palette.size(); i < 16; i++) {
+        // Output palettes must always be 16 colors in size.
+        // Pad out with base palette color if required.
+        if (palette.size() < MAX_COLOURS) {
+            for (int i = palette.size(); i < MAX_COLOURS; i++) {
                 palette.push_back(image->palette[0]);
             }
         }
-        std::cout << std::endl;
+        if (!config.quiet) std::cout << std::endl;
         palettes.push_back(palette);
     }
     for (Tile *tile : tiles) {

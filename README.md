@@ -47,6 +47,7 @@ https://github.com/yuv422/png2tile
                          gen        Output the palette in GEN/MD colour format
                          sms        Output the palette in SMS colour format
                          gg         Output the palette in GG colour format
+                         gimp       Output the palette in GIMP Palette format
                          sms_cl123  Output the palette in SMS colour format
                                     eg cl123, cl333, cl001
 

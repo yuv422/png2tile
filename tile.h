@@ -55,9 +55,6 @@ public:
     bool isDataEqual(Tile *anotherTile);
     bool validateColorUsage() const;
     void setPalette(const std::vector<std::set<int>> &palette);
-
-private:
-    void setPalIndex();
 };
 
 

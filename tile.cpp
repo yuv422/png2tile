@@ -48,7 +48,6 @@ Tile::Tile(uint16_t id, Image* image, int x, int y) {
         tile_ptr += TILE_WIDTH;
         ptr += image->width;
     }
-    setPalIndex();
 }
 
 Tile::Tile(uint16_t id, bool flippedX, bool flippedY, bool isDuplicate, int palIdx, Tile *originalTile) : id(id),
@@ -110,7 +109,7 @@ bool Tile::validateColorUsage() const {
     for (int i = 0; i < NUM_PIXELS_IN_TILE; i++) {
         colorsUsed.insert(data[i]);
     }
-    return colorsUsed.size() <= 16;
+    return colorsUsed.size() <= MAX_COLOURS;
 }
 
 void Tile::setPalette(const std::vector<std::set<int>>& palette) {
@@ -135,17 +134,4 @@ void Tile::setPalette(const std::vector<std::set<int>>& palette) {
         }
     }
     std::cerr << "Error: Could not find a palette for tile at (" << tilemapX << ", " << tilemapY << ")" << std::endl;
-}
-
-void Tile::setPalIndex() {
-    int minPalIdx = data[0];
-    int maxPalIdx = data[0];
-    for (int i = 1; i < NUM_PIXELS_IN_TILE; i++) {
-        if (data[i] < minPalIdx) {
-            minPalIdx = data[i];
-        } else if (data[i] > maxPalIdx) {
-            maxPalIdx = data[i];
-        }
-    }
-    palette_index = minPalIdx % 16;
 }
