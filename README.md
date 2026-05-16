@@ -1,5 +1,5 @@
 # png2tile
-[![Build status](https://ci.appveyor.com/api/projects/status/6jmr85ie4nko8rj0?svg=true)](https://ci.appveyor.com/project/yuv422/png2tile)
+[![Build status](https://github.com/yuv422/png2tile/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/yuv422/png2tile/actions/workflows/cmake-multi-platform.yml)
 
 Convert PNG images into Sega Master System / Mega drive tile format.
 
