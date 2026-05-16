@@ -21,44 +21,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-#ifndef PNG2TILE_TILE_H
-#define PNG2TILE_TILE_H
-
-#include <cstdint>
+#ifndef PNG2TILE_PALETTE_H
+#define PNG2TILE_PALETTE_H
 #include <set>
+#include <vector>
 
-#include "image.h"
-#define NUM_PIXELS_IN_TILE 64
+std::vector<std::set<int>> reduceToNBuckets(
+    std::vector<std::set<int>> inputs,
+    size_t numBuckets,
+    size_t maxSize = 16);
 
-#define TILE_HEIGHT 8
-#define TILE_WIDTH 8
-
-class Tile {
-public:
-    uint16_t id;
-    int tilemapX;
-    int tilemapY;
-    unsigned char data[NUM_PIXELS_IN_TILE];
-    bool flipped_x;
-    bool flipped_y;
-    bool is_duplicate;
-    int palette_index;
-    Tile *original_tile;
-
-    Tile(uint16_t id, Image *image, int x, int y);
-    Tile(uint16_t id, bool flippedX, bool flippedY, bool isDuplicate, int palIdx, Tile *originalTile);
-
-    Tile *flipX();
-    Tile *flipY();
-    Tile *flipXY();
-
-    bool isDataEqual(Tile *anotherTile);
-    bool validateColorUsage() const;
-    void setPalette(const std::vector<std::set<int>> &palette);
-
-private:
-    void setPalIndex();
-};
-
-
-#endif //PNG2TILE_TILE_H
+#endif //PNG2TILE_PALETTE_H

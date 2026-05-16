@@ -21,44 +21,41 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-#ifndef PNG2TILE_TILE_H
-#define PNG2TILE_TILE_H
+#ifndef PNG2TILE_IMAGE_H
+#define PNG2TILE_IMAGE_H
 
-#include <cstdint>
-#include <set>
+#include <vector>
 
-#include "image.h"
-#define NUM_PIXELS_IN_TILE 64
+#define MAX_COLOURS 16
 
-#define TILE_HEIGHT 8
-#define TILE_WIDTH 8
-
-class Tile {
+class Color {
 public:
-    uint16_t id;
-    int tilemapX;
-    int tilemapY;
-    unsigned char data[NUM_PIXELS_IN_TILE];
-    bool flipped_x;
-    bool flipped_y;
-    bool is_duplicate;
-    int palette_index;
-    Tile *original_tile;
+    unsigned char red = 0;
+    unsigned char green = 0;
+    unsigned char blue = 0;
 
-    Tile(uint16_t id, Image *image, int x, int y);
-    Tile(uint16_t id, bool flippedX, bool flippedY, bool isDuplicate, int palIdx, Tile *originalTile);
+    Color(const unsigned char red, const unsigned char green, const unsigned char blue)
+        : red(red),
+          green(green),
+          blue(blue) {}
 
-    Tile *flipX();
-    Tile *flipY();
-    Tile *flipXY();
-
-    bool isDataEqual(Tile *anotherTile);
-    bool validateColorUsage() const;
-    void setPalette(const std::vector<std::set<int>> &palette);
-
-private:
-    void setPalIndex();
+    friend bool operator<(const Color& lhs, const Color& rhs) {
+        if (lhs.red < rhs.red)
+            return true;
+        if (rhs.red < lhs.red)
+            return false;
+        if (lhs.green < rhs.green)
+            return true;
+        if (rhs.green < lhs.green)
+            return false;
+        return lhs.blue < rhs.blue;
+    }
 };
 
+typedef struct {
+    unsigned int width, height;
+    std::vector<Color> palette;
+    std::vector<unsigned char> pixels;
+} Image;
 
-#endif //PNG2TILE_TILE_H
+#endif //PNG2TILE_IMAGE_H

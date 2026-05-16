@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2016-2021 Eric Fry
+Copyright (c) 2016-2026 Eric Fry
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,45 +21,36 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <iostream>
 
 #include <vector>
 #include <fstream>
+#include <set>
 
 #include "tile.h"
 #include "lodepng.h"
+#include "image.h"
+#include "palette.h"
 
 #define NUM_TILE_COLS_IN_PNG_IMAGE 16
 
 #define TMX_FLIP_X_FLAG 0x80000000
 #define TMX_FLIP_Y_FLAG 0x40000000
 
-#define MAX_COLOURS 16
-
 #define TILEMAP_H_FLIP_FLAG 0x0200
 #define TILEMAP_V_FLIP_FLAG 0x0400
 #define TILEMAP_SPRITE_PALETTE_FLAG 0x0800
 #define TILEMAP_INFRONT_FLAG 0x1000
 
-typedef struct {
-    unsigned char red;
-    unsigned char green;
-    unsigned char blue;
-} Color;
-
-typedef struct {
-    unsigned int width, height;
-    Color palette[MAX_COLOURS];
-    std::vector<unsigned char> pixels;
-} Image;
-
 typedef enum {
     GEN,
     SMS,
     SMS_CL123,
-    GG
+    GG,
+    GIMP
 } PaletteOutputFormat;
 
 typedef enum {
@@ -90,6 +81,8 @@ typedef struct {
     bool output_bin;
     bool compress;
     bool quiet;
+    int numPalettes;
+    bool generateNewPal;
 } Config;
 
 // forwards for compressors
@@ -98,7 +91,7 @@ extern "C" {
 int STM_compressTilemap(uint8_t* source, uint32_t width, uint32_t height, uint8_t* dest, uint32_t destLen);
 }
 
-Image *read_png_file(const char *filename, bool quiet) {
+Image *read_png_file(const Config &config, const char *filename, bool quiet) {
     std::vector<unsigned char> png;
     Image *image = new Image;
     lodepng::State state;
@@ -117,10 +110,6 @@ Image *read_png_file(const char *filename, bool quiet) {
         return nullptr;
     }
 
-    if (!quiet && state.info_png.color.bitdepth > 4) {
-        printf("[read_png_file] PNG bit depth > 4. Only the first 16 colours will be used.\n");
-    }
-
     state.info_raw.colortype = LCT_PALETTE;
     state.info_raw.bitdepth = 8;
 
@@ -132,44 +121,29 @@ Image *read_png_file(const char *filename, bool quiet) {
         return nullptr;
     }
 
-    // Remove all colors after the first 16 palette entries.
-    for (unsigned int y = 0; y < image->height; y++) {
-        for (unsigned int x = 0; x < image->width; x++) {
-            if (image->pixels[x + y * image->width] >= MAX_COLOURS) {
-                printf("Warning: color palette index[%d] used at pixel(%d,%d).\n", image->pixels[x + y * image->width], x, y);
-                image->pixels[x + y * image->width] = 0;
-            }
-        }
+    for (int i = 0; i < state.info_png.color.palettesize; i++) {
+        image->palette.push_back(Color(state.info_png.color.palette[i * 4], state.info_png.color.palette[i * 4 + 1], state.info_png.color.palette[i * 4 + 2]));
     }
 
-    for(int i = 0; i < MAX_COLOURS; i++) {
-        if (i < state.info_png.color.palettesize) {
-            image->palette[i].red = state.info_png.color.palette[i * 4];
-            image->palette[i].green = state.info_png.color.palette[i * 4 + 1];
-            image->palette[i].blue = state.info_png.color.palette[i * 4 + 2];
-        } else {
-            image->palette[i].red   = 0;
-            image->palette[i].green = 0;
-            image->palette[i].blue  = 0;
-        }
-    }
     return image;
 }
 
-void write_png_file(const char *filename, int width, int height, const unsigned char *pixels, Color *palette) {
+void write_png_file(const char *filename, int width, int height, const unsigned char *pixels, const std::vector<std::vector<Color>> &palettes) {
     std::vector<unsigned char> png;
     lodepng::State state;
     state.info_raw.colortype = LCT_PALETTE;
     state.info_raw.bitdepth = 8;
 
-    for (int i = 0; i < MAX_COLOURS; i++) {
-        lodepng_palette_add(
-                &state.info_raw,
-                palette[i].red,
-                palette[i].green,
-                palette[i].blue,
-                0xFF
-        );
+    for (auto &palette : palettes) {
+        for (auto &color : palette) {
+            lodepng_palette_add(
+                    &state.info_raw,
+                    color.red,
+                    color.green,
+                    color.blue,
+                    0xFF
+            );
+        }
     }
     unsigned error = lodepng::encode(png, pixels, (unsigned )width, (unsigned )height, state);
     if(!error) lodepng::save_file(png, filename);
@@ -211,8 +185,14 @@ void show_usage() {
             "                     gen        Output the palette in GEN/MD colour format\n"
             "                     sms        Output the palette in SMS colour format\n"
             "                     gg         Output the palette in GG colour format\n"
+            "                     gimp       Output the palette in GIMP Palette format\n"
             "                     sms_cl123  Output the palette in SMS colour format\n"
             "                                eg cl123, cl333, cl001\n"
+            "\n"
+            "-numPals <number>    Number of 16 color palettes to use. *Default is 1.\n"
+            "\n"
+            "-generateNewPal      Generate a new palette from the input image.\n"
+            "                     *Default is unset.\n"
             "\n"
             "-savetiles <filename>\n"
             "                     Save tile data to <filename>.\n"
@@ -263,6 +243,8 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.output_bin = false;
     config.compress = false;
     config.quiet = false;
+    config.numPalettes = 1;
+    config.generateNewPal = false;
 
     config.output_tile_image_filename = nullptr;
     config.tmx_filename = nullptr;
@@ -326,8 +308,10 @@ Config parse_commandline_opts(int argc, char **argv) {
                         config.paletteOutputFormat = SMS_CL123;
                     } else if (strcmp(argv[i], "gg") == 0) {
                         config.paletteOutputFormat = GG;
+                    } else if (strcmp(argv[i], "gimp") == 0) {
+                        config.paletteOutputFormat = GIMP;
                     } else {
-                        printf("Invalid palette type '%s'. Valid palette types are ('gen', 'sms', 'sms_cl123', 'gg')\n",
+                        printf("Invalid palette type '%s'. Valid palette types are ('gen', 'sms', 'sms_cl123', 'gg', 'gimp')\n",
                                argv[i]);
                         exit(1);
                     }
@@ -363,6 +347,20 @@ Config parse_commandline_opts(int argc, char **argv) {
                 config.compress = true;
             } else if (strcmp(cmd, "quiet") == 0) {
                 config.quiet = true;
+            } else if (strcmp(cmd, "numPals") == 0) {
+                i++;
+                if (i < argc) {
+                    config.numPalettes = strtol(argv[i], nullptr, 0);
+                    if (config.numPalettes == 0) {
+                        config.numPalettes = 1;
+                    }
+                    if (config.numPalettes > 4) {
+                        printf("Number of palettes cannot be greater than 4\n");
+                        exit(1);
+                    }
+                }
+            } else if (strcmp(cmd, "generateNewPal") == 0) {
+                config.generateNewPal = true;
             } else {
                 printf("Unknown option: '-%s'\n", cmd);
                 show_usage();
@@ -383,7 +381,7 @@ Config parse_commandline_opts(int argc, char **argv) {
     return config;
 }
 
-void write_tiles_to_png_image(const char *output_image_filename, Image *input_image, std::vector<Tile *> *tiles) {
+void write_tiles_to_png_image(const char *output_image_filename, const std::vector<std::vector<Color>> &palettes, std::vector<Tile *> *tiles) {
     int output_width = 16;
     int output_height = (int)tiles->size() / output_width;
     if (tiles->size() % output_width != 0) {
@@ -409,7 +407,7 @@ void write_tiles_to_png_image(const char *output_image_filename, Image *input_im
         }
     }
 
-    write_png_file(output_image_filename, output_width, output_height, pixels, input_image->palette);
+    write_png_file(output_image_filename, output_width, output_height, pixels, palettes);
 }
 
 void write_tiles(const Config &config, const char *filename, std::vector<Tile *> *tiles) {
@@ -488,89 +486,137 @@ uint8_t convert_colour_channel_to_2bit(uint8_t c) {
     return 3;
 }
 
-void write_sms_palette_file(const Config& config, const char *filename, Image *input_image) {
+void write_sms_palette_file(const Config& config, const std::vector<std::vector<Color>> &palettes) {
     std::ofstream out;
-    out.open(filename, config.output_bin ?
+    out.open(config.palette_filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
 
-    if (!config.output_bin) out << ".db";
+    for (auto pal : palettes) {
+        if (!config.output_bin) out << ".db";
+        for (int i = 0; i < MAX_COLOURS; i++) {
+            uint8_t c = (convert_colour_channel_to_2bit((uint8_t) pal[i].red)
+                       | (convert_colour_channel_to_2bit((uint8_t) pal[i].green) << 2)
+                       | (convert_colour_channel_to_2bit((uint8_t) pal[i].blue) << 4));
 
-    for (int i = 0; i < MAX_COLOURS; i++) {
-        uint8_t c = (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].red)
-                   | (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].green) << 2)
-                   | (convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].blue) << 4));
-
-        if (!config.output_bin) {
-            char buf[3];
-            snprintf(buf, 3, "%02X", c);
-            out << " $" << buf;
-        } else out.write((const char*)&c, 1);
+            if (!config.output_bin) {
+                char buf[3];
+                snprintf(buf, 3, "%02X", c);
+                out << " $" << buf;
+            } else out.write((const char*)&c, 1);
+        }
+        if (!config.output_bin) out << "\n";
     }
-    if (!config.output_bin) out << "\n";
 
     out.close();
 }
 
-void write_gg_palette_file(const Config& config, const char *filename, Image *input_image) {
+void write_gg_palette_file(const Config& config, const std::vector<std::vector<Color>> &palettes) {
     std::ofstream out;
-    out.open(filename, config.output_bin ?
+    out.open(config.palette_filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
 
-    if (!config.output_bin) out << ".dw";
+    for (const auto &palette : palettes) {
+        if (!config.output_bin) out << ".dw";
 
-    for (int i = 0; i < MAX_COLOURS; i++) {
-        uint16_t c = ((uint16_t) input_image->palette[i].red >> 4)
-                   | (uint16_t) (input_image->palette[i].green >> 4) << 4
-                   | (uint16_t) (input_image->palette[i].blue >> 4) << 8;
+        for (int i = 0; i < MAX_COLOURS; i++) {
+            uint16_t c = ((uint16_t) palette[i].red >> 4)
+                       | (uint16_t) (palette[i].green >> 4) << 4
+                       | (uint16_t) (palette[i].blue >> 4) << 8;
 
-        if (!config.output_bin) {
+            if (!config.output_bin) {
+                char buf[5];
+                snprintf(buf, 5, "%04X", c);
+                out << " $" << buf;
+            } else out.write((const char*)&c, 2);
+        }
+        if (!config.output_bin) out << "\n";
+    }
+    out.close();
+}
+
+void write_gen_palette_file_txt(const char *filename, const std::vector<std::vector<Color>> &palettes) {
+    std::ofstream out;
+    out.open(filename, std::ofstream::out);
+
+    out << ".dw";
+
+    for (const auto &palette : palettes) {
+        for (int i = 0; i < MAX_COLOURS; i++) {
+            uint16_t c = (uint16_t)(((palette[i].red >> 4) & 0xE) << 0)
+                | (uint16_t)(((palette[i].green >> 4) & 0xE) << 4)
+                | (uint16_t)(((palette[i].blue >> 4) & 0xE) << 8);
+
             char buf[5];
             snprintf(buf, 5, "%04X", c);
             out << " $" << buf;
-        } else out.write((const char*)&c, 2);
+        }
+        out << "\n";
     }
-    if (!config.output_bin) out << "\n";
 
     out.close();
 }
 
-void write_gen_palette_file(const Config& config, const char *filename, Image *input_image) {
+void write_gen_palette_file_bin(const char *filename, const std::vector<std::vector<Color>> &palettes) {
     std::ofstream out;
-    out.open(filename, config.output_bin ?
-        std::ofstream::binary : std::ofstream::out);
+    out.open(filename, std::ofstream::binary);
 
-    if (!config.output_bin) out << ".dw";
+    for (const auto &palette : palettes) {
+        for (int i = 0; i < MAX_COLOURS; i++) {
+            uint16_t c = (uint16_t)(((palette[i].red >> 4) & 0xE) << 0)
+                | (uint16_t)(((palette[i].green >> 4) & 0xE) << 4)
+                | (uint16_t)(((palette[i].blue >> 4) & 0xE) << 8);
 
-    for (int i = 0; i < MAX_COLOURS; i++) {
-        uint16_t c = (uint16_t)(((input_image->palette[i].red >> 4) & 0xE) << 0)
-            | (uint16_t)(((input_image->palette[i].green >> 4) & 0xE) << 4)
-            | (uint16_t)(((input_image->palette[i].blue >> 4) & 0xE) << 8);
-
-        if (!config.output_bin) {
-            char buf[5];
-            snprintf(buf, 5, "%04X", c);
-            out << " $" << buf;
-        } else out.write((const char*)&c, 2);
+            uint8_t bytes[2];
+            bytes[0] = (uint8_t) (c >> 8);
+            bytes[1] = (uint8_t) (c & 0xff);
+            out.write((const char*)bytes, 2);
+        }
     }
-    if (!config.output_bin) out << "\n";
-
     out.close();
 }
 
-void write_sms_cl123_palette_file(const char *filename, Image *input_image) {
+void write_gen_palette_file(const Config& config, const std::vector<std::vector<Color>> &palettes) {
+    if (config.output_bin) {
+        write_gen_palette_file_bin(config.palette_filename, palettes);
+    } else {
+        write_gen_palette_file_txt(config.palette_filename, palettes);
+    }
+}
+
+void write_sms_cl123_palette_file(const Config& config, const std::vector<std::vector<Color>> &palettes) {
     std::ofstream out;
-    out.open(filename);
+    out.open(config.palette_filename);
 
     out << ".db";
 
-    for (int i = 0; i < MAX_COLOURS; i++) {
-        uint8_t r = convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].red);
-        uint8_t g = convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].green);
-        uint8_t b = convert_colour_channel_to_2bit((uint8_t) input_image->palette[i].blue);
+    for (const auto &palette : palettes) {
+        for (int i = 0; i < MAX_COLOURS; i++) {
+            uint8_t r = convert_colour_channel_to_2bit((uint8_t)palette[i].red);
+            uint8_t g = convert_colour_channel_to_2bit((uint8_t)palette[i].green);
+            uint8_t b = convert_colour_channel_to_2bit((uint8_t)palette[i].blue);
 
-        out << " cl" << (int) r << (int) g << (int) b;
+            out << " cl" << (int) r << (int) g << (int) b;
+        }
+        out << "\n";
     }
-    out << "\n";
+    out.close();
+}
+
+void write_gimp_palette_file(const Config& config, const std::vector<std::vector<Color>> &palettes) {
+    std::ofstream out;
+    out.open(config.palette_filename, std::ios::binary); // binary to make sure we only output 0xa line endings.
+
+    out << "GIMP Palette\n";
+    out << "Name: png2tile palette\n";
+    out << "#\n";
+
+    for (const auto &palette : palettes) {
+        for (int i = 0; i < MAX_COLOURS; i++) {
+            char buf[12];
+            snprintf(buf, 12, "%3d %3d %3d", (int) palette[i].red, (int) palette[i].green, (int) palette[i].blue);
+            out << buf << "   Untitled\n";
+        }
+    }
 
     out.close();
 }
@@ -590,13 +636,13 @@ unsigned int get_tmx_tile_id(std::vector<Tile *> *tilemap, int index) {
     return id;
 }
 
-void write_tmx_file(const char *filename, Image *input_image, std::vector<Tile *> *tiles, std::vector<Tile *> *tilemap,
+void write_tmx_file(const char *filename, Image *input_image, const std::vector<std::vector<Color>> &palettes, std::vector<Tile *> *tiles, std::vector<Tile *> *tilemap,
                     TileSize tileSize) {
     std::string tileset_filename = filename;
 
     tileset_filename += ".png";
 
-    write_tiles_to_png_image(tileset_filename.c_str(), input_image, tiles);
+    write_tiles_to_png_image(tileset_filename.c_str(), palettes, tiles);
 
     int tilemap_width = input_image->width / TILE_WIDTH;
     int tilemap_height = input_image->height / TILE_HEIGHT;
@@ -682,7 +728,7 @@ void write_tilemap_file(const Config& config, const char *filename, std::vector<
             id = id | TILEMAP_V_FLIP_FLAG;
         }
 
-        if (config.use_sprite_pal) {
+        if (config.use_sprite_pal || (config.numPalettes == 2 && t->palette_index == 1)) {
             id = id | TILEMAP_SPRITE_PALETTE_FLAG;
         }
 
@@ -739,15 +785,10 @@ Tile *find_duplicate(Tile *tile, std::vector<Tile *> *tiles) {
     return nullptr;
 }
 
-Tile *createTile(Image *image, int x, int y, int w, int h, std::vector<Tile *> *tiles, bool mirrored) {
-    Tile *tile = new Tile(0, false, false, false, nullptr);
-
-    unsigned char *ptr = &image->pixels[0] + y * image->width + x;
-    unsigned char *tile_ptr = tile->data;
-    for (int i = 0; i < h; i++) {
-        memcpy(tile_ptr, ptr, w);
-        tile_ptr += w;
-        ptr += image->width;
+Tile *createTile(Image *image, int x, int y, std::vector<Tile *> *tiles, bool mirrored) {
+    Tile *tile = new Tile(0, image, x, y);
+    if (!tile->validateColorUsage()) {
+        printf("Warning: Too many colors used in tile (%d, %d)\n", x, y);
     }
 
     tile->original_tile = find_duplicate(tile, tiles);
@@ -790,13 +831,110 @@ void add_new_tile(std::vector<Tile *> *tiles, Tile *tile) {
     tiles->push_back(tile);
 }
 
+std::vector<std::set<int>> combineSupersets(std::vector<std::set<int>> sets) {
+    bool merged = true;
+
+    while (merged) {
+        merged = false;
+        for (size_t i = 0; i < sets.size(); ++i) {
+            for (size_t j = i + 1; j < sets.size(); ++j) {
+                const auto& a = sets[i];
+                const auto& b = sets[j];
+
+                bool aContainsB = std::includes(a.begin(), a.end(), b.begin(), b.end());
+                bool bContainsA = std::includes(b.begin(), b.end(), a.begin(), a.end());
+
+                if (aContainsB || bContainsA) {
+                    // Keep the superset (or either if equal), remove the other
+                    if (bContainsA) {
+                        sets[i] = sets[j]; // b is superset, promote to i
+                    }
+                    sets.erase(sets.begin() + j);
+                    merged = true;
+                    break; // Restart inner loop after mutation
+                }
+            }
+            if (merged) break;
+        }
+    }
+
+    return sets;
+}
+
+std::vector<std::vector<Color>> createPalettes(const Config &config, Image *image, std::vector<Tile *> &tiles) {
+    std::set<int> maxColors;
+    std::vector<std::set<int>> supersets;
+    std::vector<std::vector<Color>> palettes;
+
+    if (config.generateNewPal) {
+        //generate optimal palettes
+        for (Tile *tile : tiles) {
+            std::set<int> colors;
+            for (int i = 0; i < NUM_PIXELS_IN_TILE; i++) {
+                colors.insert(tile->data[i]);
+            }
+
+            if (colors.size() > maxColors.size()) {
+                maxColors = colors;
+            }
+            supersets.push_back(colors);
+        }
+        supersets = combineSupersets(supersets);
+        supersets = reduceToNBuckets(supersets, config.numPalettes, 16);
+        std::cout << "num reduced sets" << supersets.size() << std::endl;
+    } else {
+        int palIdx = 0;
+        for (int i = 0; i < config.numPalettes; i++) {
+            std::set<int> palette;
+            for (int j = 0; j < 16; j++) {
+                if (i > 0 && j == 0) {
+                    palette.insert(0); // use the base bg pal entry for sprite palettes
+                } else {
+                    palette.insert(i * 16 + j);
+                }
+                palIdx++;
+            }
+            supersets.push_back(palette);
+
+            // force any tile using the sprite palette to use the base bg pal entry.
+            for (Tile *tile : tiles) {
+                for (int i = 0; i < NUM_PIXELS_IN_TILE; i++) {
+                    if (tile->data[i] % 16 == 0) {
+                        tile->data[i] = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    for (const auto &set: supersets) {
+        std::vector<Color> palette;
+        const char *sep = " ";
+        for (const int &value : set) {
+            std::cout << sep << value; sep = ", ";
+            palette.push_back(image->palette[value]);
+        }
+        if (palette.size() < 16) {
+            for (int i = palette.size(); i < 16; i++) {
+                palette.push_back(image->palette[0]);
+            }
+        }
+        std::cout << std::endl;
+        palettes.push_back(palette);
+    }
+    for (Tile *tile : tiles) {
+        tile->setPalette(supersets);
+    }
+    return palettes;
+}
+
 int process_file(const Config &config) {
     // some extra verbosity
     if (!config.quiet) {
         printf("Processing \"%s\"...\n", config.input_filename);
     }
 
-    Image *image = read_png_file(config.input_filename, config.quiet);
+    Image *image = read_png_file(config, config.input_filename, config.quiet);
     if (image == nullptr) {
         printf("Failed to open file:  %s\n", config.input_filename);
         return 1;
@@ -823,7 +961,7 @@ int process_file(const Config &config) {
     if (config.tileSize == TILE_8x8) {
         for (unsigned int y = 0; y < image->height; y += TILE_HEIGHT) {
             for (unsigned int x = 0; x < image->width; x += TILE_WIDTH) {
-                Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
+                Tile *tile = createTile(image, x, y, &tiles, config.mirror);
 
                 if (!tile->is_duplicate || !config.remove_dups) {
                     add_new_tile(&tiles, tile);
@@ -834,14 +972,14 @@ int process_file(const Config &config) {
     } else if (config.tileSize == TILE_8x16) {
         for (unsigned int y = 0; y < image->height; y += TILE_HEIGHT * 2) {
             for (unsigned int x = 0; x < image->width; x += TILE_WIDTH) {
-                Tile *tile = createTile(image, x, y, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
+                Tile *tile = createTile(image, x, y, &tiles, config.mirror);
 
                 if (!tile->is_duplicate || !config.remove_dups) {
                     add_new_tile(&tiles, tile);
                 }
                 tilemap.push_back(tile);
 
-                tile = createTile(image, x, y + TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT, &tiles, config.mirror);
+                tile = createTile(image, x, y + TILE_HEIGHT, &tiles, config.mirror);
 
                 if (!tile->is_duplicate || !config.remove_dups) {
                     add_new_tile(&tiles, tile);
@@ -850,31 +988,37 @@ int process_file(const Config &config) {
             }
         }
     }
+
+    const std::vector<std::vector<Color>> palettes = createPalettes(config, image, tiles);
+
     if (!config.quiet) {
         printf("tilemap: %d, tiles: %d\n", (int) tilemap.size(), (int) tiles.size());
     }
 
     if (config.output_tile_image_filename != nullptr) {
-        write_tiles_to_png_image(config.output_tile_image_filename, image, &tiles);
+        write_tiles_to_png_image(config.output_tile_image_filename, palettes, &tiles);
     }
 
     if (config.tmx_filename != nullptr) {
-        write_tmx_file(config.tmx_filename, image, &tiles, &tilemap, config.tileSize);
+        write_tmx_file(config.tmx_filename, image, palettes, &tiles, &tilemap, config.tileSize);
     }
 
     if (config.palette_filename != nullptr) {
         switch (config.paletteOutputFormat) {
             case GEN :
-                write_gen_palette_file(config, config.palette_filename, image);
+                write_gen_palette_file(config, palettes);
                 break;
             case SMS :
-                write_sms_palette_file(config, config.palette_filename, image);
+                write_sms_palette_file(config, palettes);
                 break;
             case SMS_CL123 :
-                write_sms_cl123_palette_file(config.palette_filename, image);
+                write_sms_cl123_palette_file(config, palettes);
                 break;
             case GG :
-                write_gg_palette_file(config, config.palette_filename, image);
+                write_gg_palette_file(config, palettes);
+                break;
+            case GIMP :
+                write_gimp_palette_file(config, palettes);
                 break;
             default :
                 break;

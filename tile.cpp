@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2016-2021 Eric Fry
+Copyright (c) 2016-2026 Eric Fry
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,17 +24,44 @@ SOFTWARE.
 
 #include "tile.h"
 
-Tile::Tile(uint16_t id, bool flippedX, bool flippedY, bool isDuplicate, Tile *originalTile) : id(id),
-                                                                                              flipped_x(flippedX),
-                                                                                              flipped_y(flippedY),
-                                                                                              is_duplicate(isDuplicate),
-                                                                                              original_tile(
-                                                                                                      originalTile) {
+#include <algorithm>
+#include <cstring>
+#include <iostream>
+#include <map>
+#include <ostream>
+#include <set>
+
+Tile::Tile(uint16_t id, Image* image, int x, int y) {
+    this->id = id;
+    this->tilemapX = x;
+    this->tilemapY = y;
+    this->flipped_x = false;
+    this->flipped_y = false;
+    this->is_duplicate = false;
+    this->palette_index = 0;
+    this->original_tile = nullptr;
+
+    unsigned char *ptr = &image->pixels[0] + y * image->width + x;
+    unsigned char *tile_ptr = data;
+    for (int i = 0; i < TILE_HEIGHT; i++) {
+        memcpy(tile_ptr, ptr, TILE_WIDTH);
+        tile_ptr += TILE_WIDTH;
+        ptr += image->width;
+    }
+    setPalIndex();
+}
+
+Tile::Tile(uint16_t id, bool flippedX, bool flippedY, bool isDuplicate, int palIdx, Tile *originalTile) : id(id),
+                                                                                                          flipped_x(flippedX),
+                                                                                                          flipped_y(flippedY),
+                                                                                                          is_duplicate(isDuplicate),
+                                                                                                          palette_index(palIdx),
+                                                                                                          original_tile(originalTile) {
 
 }
 
 Tile *Tile::flipX() {
-    Tile *flipped_tile = new Tile(id, true, flipped_y, is_duplicate, original_tile);
+    Tile *flipped_tile = new Tile(id, true, flipped_y, is_duplicate, palette_index, original_tile);
 
     for (int y = 0; y < TILE_HEIGHT; y++) {
         for (int x = 0; x < TILE_WIDTH; x++) {
@@ -46,7 +73,7 @@ Tile *Tile::flipX() {
 }
 
 Tile *Tile::flipY() {
-    Tile *flipped_tile = new Tile(id, flipped_x, true, is_duplicate, original_tile);
+    Tile *flipped_tile = new Tile(id, flipped_x, true, is_duplicate, palette_index, original_tile);
 
     for (int x = 0; x < TILE_WIDTH; x++) {
         for (int y = 0; y < TILE_HEIGHT; y++) {
@@ -76,4 +103,49 @@ bool Tile::isDataEqual(Tile *anotherTile) {
         return true;
     }
     return false;
+}
+
+bool Tile::validateColorUsage() const {
+    std::set<int> colorsUsed;
+    for (int i = 0; i < NUM_PIXELS_IN_TILE; i++) {
+        colorsUsed.insert(data[i]);
+    }
+    return colorsUsed.size() <= 16;
+}
+
+void Tile::setPalette(const std::vector<std::set<int>>& palette) {
+    std::set<int> colorsUsed;
+    for (int i = 0; i < NUM_PIXELS_IN_TILE; i++) {
+        colorsUsed.insert(data[i]);
+    }
+    for (int i = 0; i < palette.size(); i++) {
+        auto pal = palette[i];
+        if (std::includes(pal.begin(), pal.end(), colorsUsed.begin(), colorsUsed.end())) {
+            palette_index = i;
+            std::map<int, int> colorMap;
+            int j = 0;
+            for (int color: pal) {
+                colorMap[color] = j;
+                j++;
+            }
+            for (int j = 0; j < NUM_PIXELS_IN_TILE; j++) {
+                data[j] = colorMap[data[j]];
+            }
+            return;
+        }
+    }
+    std::cerr << "Error: Could not find a palette for tile at (" << tilemapX << ", " << tilemapY << ")" << std::endl;
+}
+
+void Tile::setPalIndex() {
+    int minPalIdx = data[0];
+    int maxPalIdx = data[0];
+    for (int i = 1; i < NUM_PIXELS_IN_TILE; i++) {
+        if (data[i] < minPalIdx) {
+            minPalIdx = data[i];
+        } else if (data[i] > maxPalIdx) {
+            maxPalIdx = data[i];
+        }
+    }
+    palette_index = minPalIdx % 16;
 }

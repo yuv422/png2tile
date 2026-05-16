@@ -10,7 +10,10 @@ set(SOURCE_FILES
     lodepng.h
     main.cpp
     tile.cpp
-    tile.h)
+    tile.h
+    image.h
+    palette.cpp
+    palette.h)
 
 add_executable(png2tile ${SOURCE_FILES})
 

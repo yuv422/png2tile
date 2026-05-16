@@ -49,7 +49,12 @@ https://github.com/yuv422/png2tile
                          gg         Output the palette in GG colour format
                          sms_cl123  Output the palette in SMS colour format
                                     eg cl123, cl333, cl001
-    
+
+    -numPals <number>    Number of 16 color palettes to use. *Default is 1.
+
+    -generateNewPal      Generate a new palette from the input image.
+                         *Default is unset.
+
     -savetiles <filename>
                          Save tile data to <filename>.
     
