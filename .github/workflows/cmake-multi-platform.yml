@@ -72,7 +72,7 @@ jobs:
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
     - name: Package
-      run: cpack -B ${{ steps.strings.outputs.build-output-dir }} -P png2tile -G ZIP -R 0.0.0-${{ steps.strings.outputs.commit-short-sha }}
+      run: cpack -C ${{ matrix.build_type }}
 
     # - name: Test
     #   working-directory: ${{ steps.strings.outputs.build-output-dir }}
