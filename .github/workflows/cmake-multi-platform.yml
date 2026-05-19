@@ -70,18 +70,12 @@ jobs:
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
-    - name: Zip Windows artifact
+    - name: Upload Windows Package Artifact
       if: matrix.os == 'windows-latest'
-      run: |
-        cd ${{ steps.strings.outputs.build-output-dir }}
-        zip -r png2tile-${{ steps.strings.outputs.commit-short-sha }}-win64.zip Release/png2tile.exe
-
-    - name: Publish Windows artifact
       uses: actions/upload-artifact@v7
-      if: matrix.os == 'windows-latest'
       with:
-        name: windows-${{ matrix.build_type }}-${{ steps.strings.outputs.commit-short-sha }}
-        path: ${{ steps.strings.outputs.build-output-dir }}/png2tile-${{ steps.strings.outputs.commit-short-sha }}-win64.zip
+        name: png2tile-${{ matrix.os }}-${{ steps.strings.outputs.commit-short-sha }}
+        path: build/Release/png2tile.exe
 
     # - name: Test
     #   working-directory: ${{ steps.strings.outputs.build-output-dir }}
