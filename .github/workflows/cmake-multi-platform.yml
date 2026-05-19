@@ -82,7 +82,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: png2tile-${{ matrix.os }}
-        path: build/png2tile.exe
+        path: build/Release/png2tile.exe
 
     # - name: Test
     #   working-directory: ${{ steps.strings.outputs.build-output-dir }}
