@@ -5,6 +5,8 @@ name: CMake on multiple platforms
 on:
   push:
     branches: [ "master" ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ "master" ]
 
@@ -54,6 +56,8 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
         calculatedSha=$(git rev-parse --short ${{ github.sha }})
+        tagName=$(echo "${{ github.ref }}" | sed -e 's/refs\/tags\/v//')
+        echo "tag-name=$tagName" >> "$GITHUB_OUTPUT"
         echo "commit-short-sha=$calculatedSha" >> "$GITHUB_OUTPUT"
 
     - name: Configure CMake
@@ -64,6 +68,7 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCPACK_PACKAGE_VERSION=${{ steps.strings.outputs.tag-name }}
         -S ${{ github.workspace }}
 
     - name: Build
@@ -76,6 +81,21 @@ jobs:
       with:
         name: png2tile-${{ matrix.os }}-${{ steps.strings.outputs.commit-short-sha }}
         path: build/Release/png2tile.exe
+
+    - name: Package
+      if: github.ref_type == 'tag'
+      run: |
+        cd ${{ steps.strings.outputs.build-output-dir }}
+        cpack -C ${{ matrix.build_type }}
+        ls
+
+    - name: Create Windows Release
+      uses: softprops/action-gh-release@v3
+      if: matrix.os == 'windows-latest' && github.ref_type == 'tag'
+      with:
+        working_directory: build
+        files: |
+          *.zip
 
     # - name: Test
     #   working-directory: ${{ steps.strings.outputs.build-output-dir }}
