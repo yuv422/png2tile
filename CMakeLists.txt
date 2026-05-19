@@ -19,3 +19,7 @@ add_executable(png2tile ${SOURCE_FILES})
 
 target_link_libraries(png2tile)
 
+install(TARGETS png2tile RUNTIME DESTINATION .)
+
+set(CPACK_GENERATOR "ZIP" CACHE STRING "Generators to support. semi-colon delimited list")
+include(CPack)
