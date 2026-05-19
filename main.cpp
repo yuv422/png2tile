@@ -719,6 +719,7 @@ void write_tilemap_file(const Config& config, const char *filename, std::vector<
         Tile *t = tilemap->at(i);
 
         uint16_t id = t->original_tile != nullptr ? (uint16_t) t->original_tile->id : (uint16_t) t->id;
+        int palIdx = t->original_tile != nullptr ? t->original_tile->palette_index : t->palette_index;
         id += config.tile_start_offset;
 
         if (t->flipped_x) {
@@ -728,7 +729,7 @@ void write_tilemap_file(const Config& config, const char *filename, std::vector<
             id = id | TILEMAP_V_FLIP_FLAG;
         }
 
-        if (config.use_sprite_pal || (config.numPalettes == 2 && t->palette_index == 1)) {
+        if (config.use_sprite_pal || (config.numPalettes == 2 && palIdx == 1)) {
             id = id | TILEMAP_SPRITE_PALETTE_FLAG;
         }
 
