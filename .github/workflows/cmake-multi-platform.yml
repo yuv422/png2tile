@@ -73,6 +73,7 @@ jobs:
 
     - name: Package
       run: |
+        cd ${{ steps.strings.outputs.build-output-dir }}
         ls
         cpack -C ${{ matrix.build_type }}
 
