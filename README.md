@@ -84,6 +84,8 @@ https://github.com/yuv422/png2tile
                          Compress output binary files. Uses STM compression for tilemaps
                          and PSG compression for tiles. Implies -binary if not also specified.
 
+    -version             Print version.
+
     -quiet               Reduce verbosity.
 
 ## Compiling png2tile

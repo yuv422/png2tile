@@ -187,7 +187,7 @@ void show_usage() {
             "                     'chunky'   Output tileset data in chunky\n"
             "                                (two pixels per byte) format. \n"
             "\n"
-            "-tilemapformat <format>"
+            "-tilemapformat <format>\n"
             "                     'sms'      Output tilemap data in sms format. *default* \n"
             "                     'gen'      Output tilemap data in Megadrive/Genesis format\n"
             "\n"
@@ -237,6 +237,8 @@ void show_usage() {
             "-compress \n"
             "                     Compress output binary files. Uses STM compression for tilemaps\n"
             "                     and PSG compression for tiles. Implies -binary if not also specified.\n"
+            "\n"
+            "-version             Print version.\n"
             "\n"
             "-quiet               Reduce verbosity.\n\n";
 
