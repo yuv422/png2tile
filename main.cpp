@@ -34,6 +34,7 @@ SOFTWARE.
 #include "lodepng.h"
 #include "image.h"
 #include "palette.h"
+#include "version.h"
 
 #define NUM_TILE_COLS_IN_PNG_IMAGE 16
 
@@ -162,7 +163,12 @@ void write_png_file(const char *filename, int width, int height, const unsigned 
     }
 }
 
+void show_version() {
+    std::cout << "png2tile version " << VERSION_STRING << std::endl;
+}
+
 void show_usage() {
+    show_version();
     std::string s = "Usage:\n"
             "png2tile <input_filename> [options]\n"
             "\n"
@@ -239,6 +245,11 @@ void show_usage() {
 
 Config parse_commandline_opts(int argc, char **argv) {
     Config config;
+
+    if (argc == 2 && strcmp(argv[1], "-version") == 0) {
+        show_version();
+        exit(0);
+    }
 
     if (argc < 2 || argv[1][0] == '-') {
         show_usage();
@@ -388,6 +399,8 @@ Config parse_commandline_opts(int argc, char **argv) {
                 }
             } else if (strcmp(cmd, "generateNewPal") == 0) {
                 config.generateNewPal = true;
+            } else if (strcmp(cmd, "version") == 0) {
+                show_version();
             } else {
                 printf("Unknown option: '-%s'\n", cmd);
                 show_usage();

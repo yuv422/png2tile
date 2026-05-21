@@ -13,7 +13,8 @@ set(SOURCE_FILES
     tile.h
     image.h
     palette.cpp
-    palette.h)
+    palette.h
+    version.h)
 
 add_executable(png2tile ${SOURCE_FILES})
 
