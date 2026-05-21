@@ -87,7 +87,6 @@ jobs:
       run: |
         cd ${{ steps.strings.outputs.build-output-dir }}
         cpack -C ${{ matrix.build_type }}
-        ls
 
     - name: Create Windows Release
       uses: softprops/action-gh-release@v3

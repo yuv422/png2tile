@@ -33,6 +33,10 @@ https://github.com/yuv422/png2tile
                          'chunky'   Output tileset data in chunky
                                     (two pixels per byte) format. 
     
+    -tilemapformat <format>
+                         'sms'      Output tilemap data in sms format. *default*
+                         'gen'      Output tilemap data in Megadrive/Genesis format
+
     -tileoffset <n>      The starting index of the first tile. *Default is 0.
                          The offset can be specified in either decimal or hex
                          Hex numbers prefixed with 0x eg. 0x1A

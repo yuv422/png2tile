@@ -40,10 +40,14 @@ SOFTWARE.
 #define TMX_FLIP_X_FLAG 0x80000000
 #define TMX_FLIP_Y_FLAG 0x40000000
 
-#define TILEMAP_H_FLIP_FLAG 0x0200
-#define TILEMAP_V_FLIP_FLAG 0x0400
-#define TILEMAP_SPRITE_PALETTE_FLAG 0x0800
-#define TILEMAP_INFRONT_FLAG 0x1000
+#define TILEMAP_SMS_H_FLIP_FLAG 0x0200
+#define TILEMAP_SMS_V_FLIP_FLAG 0x0400
+#define TILEMAP_SMS_SPRITE_PALETTE_FLAG 0x0800
+#define TILEMAP_SMS_INFRONT_FLAG 0x1000
+
+#define TILEMAP_GEN_H_FLIP_FLAG 0x0800
+#define TILEMAP_GEN_V_FLIP_FLAG 0x1000
+#define TILEMAP_GEN_INFRONT_FLAG 0x8000
 
 typedef enum {
     GEN,
@@ -63,6 +67,11 @@ typedef enum {
     TILE_FORMAT_CHUNKY
 } TileOutputFormat;
 
+typedef enum {
+    TILEMAP_FORMAT_SMS,
+    TILEMAP_FORMAT_GEN
+} TilemapOutputFormat;
+
 typedef struct {
     const char *input_filename;
     const char *output_tile_image_filename;
@@ -75,6 +84,7 @@ typedef struct {
     PaletteOutputFormat paletteOutputFormat;
     TileSize tileSize;
     TileOutputFormat tileOutputFormat;
+    TilemapOutputFormat tilemapOutputFormat;
     int tile_start_offset;
     bool use_sprite_pal;
     bool infront_flag;
@@ -171,6 +181,10 @@ void show_usage() {
             "                     'chunky'   Output tileset data in chunky\n"
             "                                (two pixels per byte) format. \n"
             "\n"
+            "-tilemapformat <format>"
+            "                     'sms'      Output tilemap data in sms format. *default* \n"
+            "                     'gen'      Output tilemap data in Megadrive/Genesis format\n"
+            "\n"
             "-tileoffset <n>      The starting index of the first tile. *Default is 0.\n"
             "                     The offset can be specified in either decimal or hex\n"
             "                     Hex numbers prefixed with 0x eg. 0x1A\n"
@@ -237,6 +251,7 @@ Config parse_commandline_opts(int argc, char **argv) {
     config.paletteOutputFormat = SMS;
     config.tileSize = TILE_8x8;
     config.tileOutputFormat = TILE_FORMAT_PLANAR;
+    config.tilemapOutputFormat = TILEMAP_FORMAT_SMS;
     config.use_sprite_pal = false;
     config.infront_flag = false;
     config.tile_start_offset = 0;
@@ -292,6 +307,18 @@ Config parse_commandline_opts(int argc, char **argv) {
                 i++;
                 if (i < argc) {
                     config.tile_start_offset = strtol(argv[i], nullptr, 0);
+                }
+            } else if (strcmp(cmd, "tilemapformat") == 0) {
+                i++;
+                if (i < argc) {
+                    if (strcmp(argv[i], "sms") == 0) {
+                        config.tilemapOutputFormat = TILEMAP_FORMAT_SMS;
+                    } else if (strcmp(argv[i], "gen") == 0) {
+                        config.tilemapOutputFormat = TILEMAP_FORMAT_GEN;
+                    } else {
+                        printf("Invalid tilemap output format '%s'. Valid formats are ('sms', 'gen')\n", argv[i]);
+                        exit(1);
+                    }
                 }
             } else if (strcmp(cmd, "spritepalette") == 0) {
                 config.use_sprite_pal = true;
@@ -705,9 +732,9 @@ void write_tmx_file(const char *filename, Image *input_image, const std::vector<
     out.close();
 }
 
-void write_tilemap_file(const Config& config, const char *filename, std::vector<Tile *> *tilemap, int width) {
+void write_sms_tilemap_file(const Config& config, std::vector<Tile *> *tilemap, int width) {
     std::ofstream out;
-    out.open(filename, config.output_bin ?
+    out.open(config.tilemap_filename, config.output_bin ?
         std::ofstream::binary : std::ofstream::out);
     std::vector<uint16_t> outbuf;
 
@@ -723,18 +750,18 @@ void write_tilemap_file(const Config& config, const char *filename, std::vector<
         id += config.tile_start_offset;
 
         if (t->flipped_x) {
-            id = id | TILEMAP_H_FLIP_FLAG;
+            id = id | TILEMAP_SMS_H_FLIP_FLAG;
         }
         if (t->flipped_y) {
-            id = id | TILEMAP_V_FLIP_FLAG;
+            id = id | TILEMAP_SMS_V_FLIP_FLAG;
         }
 
         if (config.use_sprite_pal || (config.numPalettes == 2 && palIdx == 1)) {
-            id = id | TILEMAP_SPRITE_PALETTE_FLAG;
+            id = id | TILEMAP_SMS_SPRITE_PALETTE_FLAG;
         }
 
         if (config.infront_flag) {
-            id = id | TILEMAP_INFRONT_FLAG;
+            id = id | TILEMAP_SMS_INFRONT_FLAG;
         }
 
         if (!config.output_bin) {
@@ -774,6 +801,91 @@ void write_tilemap_file(const Config& config, const char *filename, std::vector<
     } else if (config.output_bin) out.write((const char*)outbuf.data(), orig_sz);
 
     out.close();
+}
+
+void write_gen_tilemap_file(const Config& config, std::vector<Tile *> *tilemap, int width) {
+    std::ofstream out;
+    out.open(config.tilemap_filename, config.output_bin ?
+        std::ofstream::binary : std::ofstream::out);
+    std::vector<uint16_t> outbuf;
+
+    if (!config.output_bin) out << ".dw";
+    int height = 1;
+
+    int total_tiles = (int)tilemap->size();
+    for (int i = 0; i < total_tiles; i++) {
+        Tile *t = tilemap->at(i);
+
+        uint16_t id = t->original_tile != nullptr ? (uint16_t) t->original_tile->id : (uint16_t) t->id;
+        int palIdx = t->original_tile != nullptr ? t->original_tile->palette_index : t->palette_index;
+        id += config.tile_start_offset;
+
+        if (t->flipped_x) {
+            id = id | TILEMAP_GEN_H_FLIP_FLAG;
+        }
+        if (t->flipped_y) {
+            id = id | TILEMAP_GEN_V_FLIP_FLAG;
+        }
+
+        // write palette index
+        id = id | ((palIdx & 3) << 13);
+
+        if (config.infront_flag) {
+            id = id | TILEMAP_GEN_INFRONT_FLAG;
+        }
+
+        if (!config.output_bin) {
+            char buf[5];
+            snprintf(buf, 5, "%04X", id);
+            out << " $" << buf;
+        }
+
+        outbuf.push_back(id);
+
+        if (i % width == width - 1) {
+            if (!config.output_bin) out << "\n";
+            if (i < total_tiles - 1) {
+                if (!config.output_bin) out << ".dw";
+                height++;
+            }
+        }
+    }
+
+    // write binary outbuf to file
+    int orig_sz = (int)outbuf.size() * 2;
+
+    // compress
+    if (config.compress) {
+        uint8_t* comp_dat = (uint8_t*)malloc(orig_sz);
+
+        int comp_sz = STM_compressTilemap((uint8_t*)outbuf.data(), width, height, comp_dat, orig_sz);
+        if (!config.quiet) {
+            std::cout << "Compressed tilemap from " << orig_sz << " bytes to " << comp_sz
+                << " (" << (int)(comp_sz / (float)orig_sz * 100) << "%)." << std::endl;
+        }
+
+        out.write((const char*)comp_dat, comp_sz);
+        free(comp_dat); comp_dat = nullptr;
+
+    // uncompressed binary
+    } else if (config.output_bin) {
+        for (uint16_t id : outbuf) {
+            uint8_t bytes[2];
+            bytes[0] = (uint8_t) (id >> 8);
+            bytes[1] = (uint8_t) (id & 0xff);
+            out.write((const char*)bytes, 2);
+        }
+    }
+
+    out.close();
+}
+
+void write_tilemap_file(const Config& config, std::vector<Tile *> *tilemap, int width) {
+    if (config.tilemapOutputFormat == TILEMAP_FORMAT_SMS) {
+        write_sms_tilemap_file(config, tilemap, width);
+    } else if (config.tilemapOutputFormat == TILEMAP_FORMAT_GEN) {
+        write_gen_tilemap_file(config, tilemap, width);
+    }
 }
 
 Tile *find_duplicate(Tile *tile, std::vector<Tile *> *tiles) {
@@ -1030,7 +1142,7 @@ int process_file(const Config &config) {
     }
 
     if (config.tilemap_filename != nullptr) {
-        write_tilemap_file(config, config.tilemap_filename, &tilemap, image->width / TILE_WIDTH);
+        write_tilemap_file(config, &tilemap, image->width / TILE_WIDTH);
     }
 
     if (config.tiles_filename != nullptr) {
